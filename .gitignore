@@ -1,0 +1,28 @@
+﻿# Dependências e builds
+node_modules/
+.next/
+out/
+dist/
+build/
+.turbo/
+.vercel/
+.cache/
+.eslintcache
+
+# Logs e temporários
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Ambiente
+.env
+.env.*
+!.env.example
+
+# SO/IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
