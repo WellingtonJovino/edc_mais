@@ -5,7 +5,16 @@
       "Bash(git filter-branch:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Read(C:\\Users\\wellington\\Desktop/**)"
+      "Read(C:\\Users\\wellington\\Desktop/**)",
+      "Bash(tree:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "WebSearch",
+      "Bash(npm install:*)",
+      "Bash(curl:*)",
+      "Bash(npm uninstall:*)"
     ],
     "deny": [],
     "ask": []

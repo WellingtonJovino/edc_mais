@@ -1,21 +1,25 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2 } from 'lucide-react';
-import { ChatMessage } from '@/types';
+import { Send, Loader2, FileText, X } from 'lucide-react';
+import { ChatMessage, UploadedFile } from '@/types';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
-  onSendMessage: (message: string) => Promise<void>;
+  onSendMessage: (message: string, uploadedFiles?: UploadedFile[]) => Promise<void>;
   isLoading?: boolean;
   placeholder?: string;
+  uploadedFiles?: UploadedFile[];
+  onRemoveFile?: (fileId: string) => void;
 }
 
 export default function ChatInterface({
   messages,
   onSendMessage,
   isLoading = false,
-  placeholder = 'Descreva o que você gostaria de aprender...'
+  placeholder = 'Descreva o que você gostaria de aprender...',
+  uploadedFiles = [],
+  onRemoveFile
 }: ChatInterfaceProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -36,7 +40,7 @@ export default function ChatInterface({
     setInput('');
     
     try {
-      await onSendMessage(message);
+      await onSendMessage(message, uploadedFiles);
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
     }
@@ -65,6 +69,28 @@ export default function ChatInterface({
                 }`}
               >
                 <p className="whitespace-pre-wrap">{message.content}</p>
+                
+                {/* Show attached files if any */}
+                {message.attachedFiles && message.attachedFiles.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-opacity-20 border-white">
+                    <div className="flex flex-wrap gap-1">
+                      {message.attachedFiles.map((file) => (
+                        <span
+                          key={file.id}
+                          className={`inline-flex items-center space-x-1 px-2 py-1 rounded text-xs ${
+                            message.role === 'user'
+                              ? 'bg-primary-500 bg-opacity-50'
+                              : 'bg-gray-100'
+                          }`}
+                        >
+                          <FileText className="w-3 h-3" />
+                          <span>{file.name}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 <span className="text-xs opacity-70 mt-1 block">
                   {new Date(message.timestamp).toLocaleTimeString('pt-BR', {
                     hour: '2-digit',
@@ -92,6 +118,45 @@ export default function ChatInterface({
 
       {/* Input Area */}
       <div className="border-t border-gray-200 p-4">
+        {/* Uploaded Files Display */}
+        {uploadedFiles.length > 0 && (
+          <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-blue-900">
+                📎 {uploadedFiles.length} arquivo(s) anexado(s)
+              </span>
+              <span className="text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded-full">
+                Serão enviados junto
+              </span>
+            </div>
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              {uploadedFiles.map((file) => (
+                <div key={file.id} className="flex items-center justify-between bg-white p-2 rounded border">
+                  <div className="flex items-center space-x-2 flex-1 min-w-0">
+                    <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+                      <p className="text-xs text-gray-500">{Math.round(file.size / 1024)} KB</p>
+                    </div>
+                  </div>
+                  {onRemoveFile && (
+                    <button
+                      onClick={() => onRemoveFile(file.id)}
+                      className="ml-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                      title="Remover arquivo"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 text-xs text-blue-700">
+              💡 Estes arquivos serão enviados junto com sua próxima mensagem
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="flex space-x-2">
           <input
             type="text"
@@ -111,7 +176,9 @@ export default function ChatInterface({
             ) : (
               <Send className="w-4 h-4" />
             )}
-            <span className="hidden sm:inline">Enviar</span>
+            <span className="hidden sm:inline">
+              {uploadedFiles.length > 0 ? `Enviar com ${uploadedFiles.length} arquivo(s)` : 'Enviar'}
+            </span>
           </button>
         </form>
       </div>
