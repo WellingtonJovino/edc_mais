@@ -10,16 +10,32 @@ const openai = new OpenAI({
  * Sanitiza texto JSON removendo caracteres de controle e cercas de código
  */
 function sanitizeToJson(text: string): string {
-  // Remove cercas de código
-  text = text.replace(/^[\s\S]*?{/, '{').replace(/}[\s\S]*$/, '}');
+  // Remove cercas de código markdown
+  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '');
 
-  // Remove caracteres de controle (exceto \n \t \r)
-  text = text.replace(/[\u0000-\u0019\u007f-\u009f]/g, ' ');
+  // Encontra o primeiro { e último } para extrair apenas o JSON
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
 
-  // Remove vírgulas penduradas: ,"key": [ "a", ]
-  text = text
-    .replace(/,\s*([}\]])/g, '$1')
-    .replace(/:[ \t]*([}\]])/g, ': []$1'); // arrays vazios se vierem só com :
+  if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) {
+    throw new Error('Não foi possível encontrar JSON válido na resposta');
+  }
+
+  text = text.substring(firstBrace, lastBrace + 1);
+
+  // Remove caracteres de controle problemáticos
+  text = text.replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F\u007f-\u009f]/g, ' ');
+
+  // Fix strings quebradas (substitui aspas não fechadas por aspas duplas)
+  text = text.replace(/"\s*\n\s*"/g, ' ');
+  text = text.replace(/"\s*\n/g, '\\n"');
+  text = text.replace(/\n\s*"/g, '"');
+
+  // Remove vírgulas penduradas antes de } ou ]
+  text = text.replace(/,(\s*[}\]])/g, '$1');
+
+  // Fix dois pontos seguidos de } ou ] (campos vazios)
+  text = text.replace(/:\s*([}\]])/g, ': ""$1');
 
   return text.trim();
 }
@@ -28,12 +44,14 @@ function sanitizeToJson(text: string): string {
  * Parser JSON seguro com sanitização
  */
 function safeJsonParse(raw: string): any {
-  const clean = sanitizeToJson(raw);
-  try { 
-    return JSON.parse(clean); 
+  try {
+    const clean = sanitizeToJson(raw);
+    console.log('🔧 JSON sanitizado:', clean.substring(0, 200) + '...');
+    return JSON.parse(clean);
   } catch (e) {
-    console.error('❌ JSON inválido após sanitização:', e);
-    throw new Error('JSON inválido após sanitização');
+    console.error('❌ Erro no parsing JSON:', e);
+    console.error('📄 Texto original (primeiros 500 chars):', raw.substring(0, 500));
+    throw new Error(`JSON parsing falhou: ${e instanceof Error ? e.message : 'Erro desconhecido'}`);
   }
 }
 

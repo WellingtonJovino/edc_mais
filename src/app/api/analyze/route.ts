@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeLearningGoal, generateTopicDescription } from '@/lib/openai';
+import { analyzeLearningGoal, generateTopicDescription, generatePrerequisites } from '@/lib/openai';
 import { searchVideosByTopics, searchAndRankYouTube } from '@/lib/youtube';
 import { searchAcademicContent, generateAcademicSummary, validateTopicsWithPerplexity, analyzeUploadedFiles, enhanceAcademicContentWithFiles } from '@/lib/perplexity';
 import { askAssistantWithFiles } from '@/lib/openai-files';
@@ -233,45 +233,26 @@ export async function POST(request: NextRequest) {
       console.log('✅ Análise de arquivos concluída');
     }
     
-    // Gerar descrições detalhadas e buscar vídeos educacionais para os primeiros 5 tópicos
-    console.log('📚 Gerando descrições detalhadas e buscando vídeos educacionais...');
+    // Buscar vídeos educacionais para os primeiros 5 tópicos
+    console.log('📚 Buscando vídeos educacionais...');
     const initialTopics = enhancedTopics.slice(0, Math.min(5, enhancedTopics.length));
     const videosResults: { [topicTitle: string]: any[] } = {};
     
-    // Processar cada tópico individualmente para descrição + vídeos educacionais
+    // Processar cada tópico individualmente para buscar vídeos educacionais
     for (let i = 0; i < initialTopics.length; i++) {
       const topic = initialTopics[i];
       console.log(`🎯 Processando tópico ${i + 1}/5: "${topic.title}"`);
       
       try {
-        // Gerar descrição detalhada do tópico
-        const topicDetails = await generateTopicDescription(
-          topic.title,
-          analysis.subject,
-          analysis.level
-        );
-        
-        // Atualizar o tópico com informações detalhadas
-        const topicIndex = enhancedTopics.findIndex(t => t.title === topic.title);
-        if (topicIndex !== -1) {
-          enhancedTopics[topicIndex] = {
-            ...topic,
-            description: topicDetails.description,
-            learningObjectives: topicDetails.learningObjectives,
-            keyTerms: topicDetails.keyTerms,
-            searchKeywords: topicDetails.searchKeywords
-          };
-        }
-        
-        // Buscar vídeos educacionais usando o novo sistema inteligente
+        // Buscar vídeos educacionais usando apenas o título do tópico
         const educationalVideos = await searchAndRankYouTube(
           topic.title,
-          topicDetails.description, // Usar descrição como contexto
+          '', // Não usar contexto desnecessário
           3 // 3 vídeos por tópico
         );
         
         videosResults[topic.title] = educationalVideos;
-        console.log(`✅ Tópico "${topic.title}": descrição + ${educationalVideos.length} vídeos educacionais`);
+        console.log(`✅ Tópico "${topic.title}": ${educationalVideos.length} vídeos educacionais encontrados`);
         
       } catch (error) {
         console.error(`❌ Erro ao processar tópico "${topic.title}":`, error);
@@ -285,7 +266,7 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    console.log('✅ Processamento de descrições e vídeos educacionais concluído');
+    console.log('✅ Busca de vídeos educacionais concluída');
 
     // Busca conteúdo acadêmico apenas para os primeiros 5 tópicos
     console.log('🎓 Iniciando busca de conteúdo acadêmico para os primeiros 5 tópicos...');
@@ -355,27 +336,108 @@ export async function POST(request: NextRequest) {
       return acc;
     }, {} as { [key: string]: any });
 
-    const topics: Topic[] = enhancedTopics.map((topic, index) => ({
-      id: `topic-${Date.now()}-${index}`,
+    // Converter módulos hierárquicos para estrutura Topic (compatibilidade)
+    const convertModulesToTopics = (modules: any[]): Topic[] => {
+      const topicsFromModules: Topic[] = [];
+      let globalOrder = 1;
+
+      modules.forEach(module => {
+        module.sections.forEach((section: any) => {
+          section.topics.forEach((moduleTopic: any) => {
+            topicsFromModules.push({
+              id: `topic-${Date.now()}-${globalOrder}`,
+              title: moduleTopic.title,
+              description: moduleTopic.description,
+              order: globalOrder++,
+              videos: videosResults[moduleTopic.title] || [],
+              academicContent: academicByTopic[moduleTopic.title] || null,
+              completed: false,
+              estimatedDuration: moduleTopic.estimatedDuration,
+              contentType: moduleTopic.contentType,
+              hasDoubtButton: true,
+              detailedDescription: moduleTopic.description,
+              learningObjectives: [],
+              keyTerms: moduleTopic.keywords || [],
+              searchKeywords: moduleTopic.keywords || [moduleTopic.title]
+            });
+          });
+        });
+      });
+
+      return topicsFromModules;
+    };
+
+    // Usar tópicos dos módulos se disponível, senão usar enhancedTopics
+    const topicsFromModules = analysis.modules ? convertModulesToTopics(analysis.modules) : [];
+    const finalTopics = topicsFromModules.length > 0 ? topicsFromModules : enhancedTopics;
+
+    const topics: Topic[] = finalTopics.map((topic, index) => ({
+      id: topic.id || `topic-${Date.now()}-${index}`,
       title: topic.title,
       description: topic.description,
-      order: topic.order,
-      videos: videosResults[topic.title] || [],
-      academicContent: academicByTopic[topic.title] || null,
+      order: topic.order || index + 1,
+      videos: topic.videos || videosResults[topic.title] || [],
+      academicContent: topic.academicContent || academicByTopic[topic.title] || null,
       completed: false,
+      estimatedDuration: topic.estimatedDuration,
+      contentType: topic.contentType,
+      hasDoubtButton: topic.hasDoubtButton,
       // Novos campos para aprendizado aprimorado
-      detailedDescription: topic.description,
+      detailedDescription: topic.detailedDescription || topic.description,
       learningObjectives: topic.learningObjectives || [],
       keyTerms: topic.keyTerms || [],
       searchKeywords: topic.searchKeywords || []
     }));
+
+    // Converter módulos da análise para a estrutura Module completa
+    const convertToModuleStructure = (analysisModules: any[]): any[] => {
+      return analysisModules.map((module, moduleIndex) => ({
+        id: `module-${Date.now()}-${moduleIndex}`,
+        title: module.title,
+        description: module.description,
+        order: module.order,
+        estimatedDuration: module.estimatedDuration,
+        completed: false,
+        color: `hsl(${moduleIndex * 60}, 70%, 50%)`, // Cores diferentes para cada módulo
+        sections: module.sections.map((section: any, sectionIndex: number) => ({
+          id: `section-${Date.now()}-${moduleIndex}-${sectionIndex}`,
+          title: section.title,
+          description: section.description,
+          order: section.order,
+          estimatedDuration: '1 semana',
+          completed: false,
+          learningObjectives: section.learningObjectives || [],
+          topics: section.topics.map((topic: any, topicIndex: number) => {
+            // Encontrar o topic correspondente na lista completa
+            const fullTopic = topics.find(t => t.title === topic.title);
+            return fullTopic || {
+              id: `topic-${Date.now()}-${moduleIndex}-${sectionIndex}-${topicIndex}`,
+              title: topic.title,
+              description: topic.description,
+              order: topic.order,
+              videos: [],
+              academicContent: null,
+              completed: false,
+              estimatedDuration: topic.estimatedDuration,
+              contentType: topic.contentType,
+              hasDoubtButton: true,
+              detailedDescription: topic.description,
+              learningObjectives: [],
+              keyTerms: topic.keywords || [],
+              searchKeywords: topic.keywords || [topic.title]
+            };
+          })
+        }))
+      }));
+    };
 
     const goal: LearningGoal = {
       id: `goal-${Date.now()}`,
       title: analysis.subject,
       description: `Plano de estudos para ${analysis.subject} (nível ${analysis.level})`,
       level: analysis.level,
-      topics,
+      modules: analysis.modules ? convertToModuleStructure(analysis.modules) : [], // Nova estrutura hierárquica
+      topics, // Mantém compatibilidade
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -395,8 +457,26 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     };
 
+    // Gerar pré-requisitos para o curso
+    console.log('🎯 Gerando pré-requisitos do curso...');
+    let prerequisites = [];
+    try {
+      prerequisites = await generatePrerequisites(
+        goal.title,
+        goal.description,
+        goal.level,
+        goal.topics.map(t => t.title)
+      );
+      console.log(`✅ ${prerequisites.length} pré-requisitos identificados`);
+    } catch (error) {
+      console.error('⚠️ Erro ao gerar pré-requisitos:', error);
+    }
+
     const learningPlan = await saveLearningPlan({
-      goal,
+      goal: {
+        ...goal,
+        prerequisites
+      },
       messages: [userMessage, assistantMessage],
       progress: 0,
       topicValidation,

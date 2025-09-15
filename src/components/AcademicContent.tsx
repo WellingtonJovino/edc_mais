@@ -13,13 +13,13 @@ export default function AcademicContent({ content }: AcademicContentProps) {
 
   const sections = [
     { id: 'introduction', label: 'Introdução', icon: BookOpen },
-    { id: 'lecture', label: 'Aula Completa', icon: GraduationCap },
-    { id: 'concepts', label: 'Conceitos-chave', icon: FileText },
-    { id: 'examples', label: 'Exemplos Práticos', icon: Users },
-    { id: 'mistakes', label: 'Erros Comuns', icon: Calendar },
+    { id: 'lecture', label: 'Aula Teórica', icon: GraduationCap },
+    { id: 'concepts', label: 'Conceitos Fundamentais', icon: FileText },
+    { id: 'examples', label: 'Exemplos Resolvidos', icon: Users },
+    { id: 'mistakes', label: 'Erros Frequentes', icon: Calendar },
     { id: 'exercises', label: 'Exercícios', icon: HelpCircle },
-    { id: 'glossary', label: 'Glossário', icon: BookOpenCheck },
-    { id: 'references', label: 'Referências', icon: ExternalLink },
+    { id: 'glossary', label: 'Glossário Técnico', icon: BookOpenCheck },
+    { id: 'references', label: 'Bibliografia', icon: ExternalLink },
   ];
 
   const renderSection = () => {
@@ -50,7 +50,7 @@ export default function AcademicContent({ content }: AcademicContentProps) {
       case 'concepts':
         return (
           <div>
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Conceitos-chave</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Conceitos Fundamentais</h3>
             <div className="grid gap-4">
               {content.keyConcepts.map((concept, index) => (
                 <div key={index} className="bg-green-50 border border-green-200 rounded-lg p-4">
@@ -118,7 +118,7 @@ export default function AcademicContent({ content }: AcademicContentProps) {
       case 'mistakes':
         return (
           <div>
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Erros Comuns e Mal-entendidos</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Erros Frequentes e Conceitos Equivocados</h3>
             <div className="space-y-4">
               {content.commonMisunderstandings.map((mistake, index) => (
                 <div key={index} className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -143,7 +143,7 @@ export default function AcademicContent({ content }: AcademicContentProps) {
             <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-l-4 border-purple-400 p-6 mb-6">
               <div className="flex items-center space-x-3 mb-4">
                 <GraduationCap className="w-6 h-6 text-purple-600" />
-                <h3 className="text-xl font-bold text-purple-800">Aula Completa</h3>
+                <h3 className="text-xl font-bold text-purple-800">Aula Teórica</h3>
               </div>
               <div className="text-purple-700 leading-relaxed whitespace-pre-line">
                 {content.lecture}
@@ -207,7 +207,7 @@ export default function AcademicContent({ content }: AcademicContentProps) {
       case 'references':
         return (
           <div>
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Referências Acadêmicas</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Bibliografia e Referências</h3>
             <div className="space-y-4">
               {content.references.map((reference, index) => (
                 <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
@@ -273,7 +273,7 @@ export default function AcademicContent({ content }: AcademicContentProps) {
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4">
         <h2 className="text-xl font-bold text-white flex items-center space-x-2">
           <GraduationCap className="w-6 h-6" />
-          <span>Aula Completa - Conteúdo Acadêmico</span>
+          <span>Conteúdo Acadêmico Científico</span>
         </h2>
       </div>
 

@@ -51,6 +51,25 @@ export interface AulaTextoStructure {
       figuras?: Array<{
         descricao: string;
         imagePrompt: string;
+        tipo: 'diagrama' | 'grafico' | 'ilustracao' | 'esquema' | 'foto';
+        posicao: 'inicio' | 'meio' | 'fim';
+        tamanho: 'pequeno' | 'medio' | 'grande';
+        legenda: string;
+        imageUrl?: string;
+      }>;
+      formulas?: Array<{
+        nome: string;
+        latex: string;
+        explicacao: string;
+        aplicacao: string;
+      }>;
+      graficos?: Array<{
+        titulo: string;
+        tipo: 'linha' | 'barra' | 'pizza' | 'dispersao' | 'funcao';
+        descricao: string;
+        dados?: any;
+        imagePrompt: string;
+        imageUrl?: string;
       }>;
     }>;
   };
@@ -95,8 +114,29 @@ PRINCÍPIOS PEDAGÓGICOS OBRIGATÓRIOS:
 ESTRUTURA OBRIGATÓRIA:
 - **Introdução**: Objetivos claros, pré-requisitos, visão geral motivadora
 - **Desenvolvimento**: Conceitos principais com definições, explicações passo-a-passo, exemplos resolvidos
+  - INCLUIR OBRIGATORIAMENTE: figuras, fórmulas (quando aplicável), gráficos explicativos
+  - Cada conceito deve ter pelo menos 1 figura ou diagrama explicativo
+  - Fórmulas matemáticas em formato LaTeX correto
+  - Gráficos e visualizações quando apropriado
 - **Conclusão**: Resumo executivo, pontos-chave, conexões futuras
 - **Verificação**: Perguntas de reflexão, exercícios com gabarito, auto-avaliação
+
+CONTEÚDO VISUAL OBRIGATÓRIO:
+- **Figuras**: Para cada conceito principal, inclua figuras explicativas com:
+  - Prompt detalhado para geração de imagem
+  - Tipo específico (diagrama, gráfico, ilustração, esquema)
+  - Posição ideal no texto (início, meio, fim)
+  - Tamanho apropriado (pequeno, médio, grande)
+  - Legenda explicativa clara
+- **Fórmulas**: Quando aplicável, inclua fórmulas em LaTeX com:
+  - Nome da fórmula
+  - Notação LaTeX correta
+  - Explicação detalhada de cada componente
+  - Aplicação prática da fórmula
+- **Gráficos**: Para conceitos que se beneficiem de visualização gráfica:
+  - Tipo de gráfico mais apropriado
+  - Prompt para geração da visualização
+  - Descrição clara do que o gráfico demonstra
 
 QUALIDADE TEXTUAL:
 - Use linguagem clara e acessível ao nível especificado

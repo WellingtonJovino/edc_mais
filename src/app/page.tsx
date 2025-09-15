@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { BookOpen, Brain, Youtube, Upload, FileText } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import ChatInterface from '@/components/ChatInterface';
 import LearningPlan from '@/components/LearningPlan';
 import FileUpload from '@/components/FileUpload';
@@ -19,6 +20,7 @@ interface UserProfile {
 }
 
 export default function HomePage() {
+  const router = useRouter();
   const [currentPlan, setCurrentPlan] = useState<LearningPlanType | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -69,6 +71,22 @@ export default function HomePage() {
         if (filesToSend.length > 0) {
           setUploadedFiles([]);
         }
+
+        // Adicionar mensagem de redirecionamento
+        const redirectMessage: ChatMessage = {
+          id: `msg-redirect-${Date.now()}`,
+          role: 'assistant',
+          content: '🎉 Curso criado com sucesso! Redirecionando para a página do curso em alguns segundos...',
+          timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, redirectMessage]);
+
+        // Redirecionar automaticamente para a página do curso após 3 segundos
+        setTimeout(() => {
+          if (data.plan.courseId) {
+            router.push(`/courses/${data.plan.courseId}`);
+          }
+        }, 3000);
       } else {
         throw new Error(data.error || 'Erro desconhecido');
       }
@@ -146,6 +164,22 @@ Perfil do usuário:
         if (uploadedFiles.length > 0) {
           setUploadedFiles([]);
         }
+
+        // Adicionar mensagem de redirecionamento
+        const redirectMessage: ChatMessage = {
+          id: `msg-redirect-quest-${Date.now()}`,
+          role: 'assistant',
+          content: '🎉 Curso personalizado criado! Redirecionando para a página do curso em alguns segundos...',
+          timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, redirectMessage]);
+
+        // Redirecionar automaticamente para a página do curso após 3 segundos
+        setTimeout(() => {
+          if (data.plan.courseId) {
+            router.push(`/courses/${data.plan.courseId}`);
+          }
+        }, 3000);
       } else {
         throw new Error(data.error || 'Erro desconhecido');
       }
@@ -206,8 +240,8 @@ Perfil do usuário:
                 <Brain className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">EDC+ Learning System</h1>
-                <p className="text-sm text-gray-600">Aprendizado personalizado com IA</p>
+                <h1 className="text-xl font-bold text-gray-900">EDC+ Plataforma Educacional</h1>
+                <p className="text-sm text-gray-600">Ensino superior personalizado com IA científica</p>
               </div>
             </div>
             
@@ -221,6 +255,10 @@ Perfil do usuário:
               </Link>
               
               <div className="flex items-center space-x-4 text-sm text-gray-500">
+                <div className="flex items-center space-x-1">
+                  <Brain className="w-4 h-4 text-blue-600" />
+                  <span>OpenAI</span>
+                </div>
                 <div className="flex items-center space-x-1">
                   <Youtube className="w-4 h-4 text-red-500" />
                   <span>YouTube</span>
@@ -242,17 +280,17 @@ Perfil do usuário:
           <div className="bg-white rounded-lg border border-gray-200 flex flex-col">
             <div className="p-4 border-b border-gray-200">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-lg font-semibold text-gray-900">Conversa com IA</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Assistente Educacional</h2>
                 <button
                   onClick={() => setShowFileUpload(true)}
-                  className="flex items-center space-x-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="flex items-center space-x-2 px-3 py-2 text-sm bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-sm"
                 >
                   <Upload className="w-4 h-4" />
-                  <span>Enviar Arquivos</span>
+                  <span>Enviar PDFs</span>
                 </button>
               </div>
               <p className="text-sm text-gray-600">
-                Descreva o que você quer aprender e receba um plano personalizado
+                Conte o que deseja estudar e receba um curso científico personalizado
               </p>
             </div>
             <div className="flex-1 min-h-0">
@@ -260,7 +298,7 @@ Perfil do usuário:
                 messages={messages}
                 onSendMessage={handleSendMessage}
                 isLoading={isLoading}
-                placeholder="Ex: Quero aprender React do zero..."
+                placeholder="Ex: Quero estudar Mecânica Vetorial para Engenharia..."
                 uploadedFiles={uploadedFiles}
                 onRemoveFile={removeUploadedFile}
               />
@@ -280,11 +318,11 @@ Perfil do usuário:
                 <div className="max-w-md">
                   <Brain className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    Nenhum plano ainda
+                    Pronto para começar?
                   </h3>
                   <p className="text-gray-600">
-                    Converse com a IA sobre o que você quer aprender e ela criará um plano 
-                    personalizado com os melhores vídeos do YouTube organizados por tópicos.
+                    Descreva sua área de estudo e receba um curso estruturado com aulas
+                    científicas, vídeos especializados e exercícios práticos.
                   </p>
                 </div>
               </div>
@@ -298,17 +336,20 @@ Perfil do usuário:
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Enviar Arquivos</h3>
+              <div className="flex items-center space-x-2">
+                <FileText className="w-5 h-5 text-blue-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Materiais de Estudo</h3>
+              </div>
               <button
                 onClick={() => setShowFileUpload(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 hover:text-gray-700 text-2xl"
               >
                 ×
               </button>
             </div>
             <p className="text-sm text-gray-600 mb-4">
-              Envie PDFs, documentos de texto, slides ou outros materiais relacionados ao que você quer aprender. 
-              A IA irá analisar o conteúdo e comparar com o plano de estudos sugerido.
+              Envie seus PDFs acadêmicos, apostilas, livros ou notas de aula.
+              O sistema analisará o conteúdo para personalizar ainda mais seu curso.
             </p>
             <FileUpload
               onFilesUploaded={handleFilesUploaded}

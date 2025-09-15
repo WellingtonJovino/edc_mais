@@ -7,6 +7,9 @@ import { getCourse, updateCourseProgress, type Course, type CourseTopic } from '
 import Link from 'next/link';
 import VideoPlayer from '@/components/VideoPlayer';
 import AcademicContent from '@/components/AcademicContent';
+import CourseChat from '@/components/CourseChat';
+import HierarchicalCourseView from '@/components/HierarchicalCourseView';
+import PrerequisitesSection from '@/components/PrerequisitesSection';
 
 export default function CoursePage() {
   const params = useParams();
@@ -186,6 +189,56 @@ export default function CoursePage() {
     );
   }
 
+  // Verificar se o curso tem estrutura hierárquica (módulos)
+  const hasHierarchicalStructure = course?.modules && course.modules.length > 0;
+
+  const handleDoubtClick = (topicId: string, topicTitle: string) => {
+    // Implementar abertura do chat com contexto do tópico
+    console.log('Abrir chat para tópico:', topicTitle);
+  };
+
+  if (hasHierarchicalStructure) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Header Simples para Vista Hierárquica */}
+        <header className="bg-white border-b border-gray-200 h-16 flex items-center px-6">
+          <div className="flex items-center space-x-4">
+            <Link href="/courses" className="text-blue-600 hover:text-blue-700">
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <div>
+              <h1 className="text-lg font-semibold text-gray-900">{course.title}</h1>
+              <div className="flex items-center space-x-3 text-sm text-gray-500">
+                <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getLevelColor(course.level)}`}>
+                  {getLevelLabel(course.level)}
+                </span>
+                <span>{course.progress}% concluído</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Vista Hierárquica */}
+        <div className="h-[calc(100vh-4rem)]">
+          <HierarchicalCourseView
+            modules={course.modules}
+            courseId={course.id}
+            courseTitle={course.title}
+            onTopicComplete={handleTopicComplete}
+            onDoubtClick={handleDoubtClick}
+          />
+        </div>
+
+        {/* Chat Interativo */}
+        <CourseChat
+          courseId={course.id}
+          courseTitle={course.title}
+          currentTopic={undefined}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -214,6 +267,11 @@ export default function CoursePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Course Content */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Prerequisites Section */}
+            {course.prerequisites && course.prerequisites.length > 0 && (
+              <PrerequisitesSection prerequisites={course.prerequisites} />
+            )}
+
             {/* Progress Overview */}
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-4">
@@ -358,6 +416,19 @@ export default function CoursePage() {
           </div>
         </div>
       </main>
+
+      {/* Chat Interativo */}
+      <CourseChat
+        courseId={course.id}
+        courseTitle={course.title}
+        currentTopic={
+          expandedTopic
+            ? course.topics?.find(t => t.id === expandedTopic)
+              ? { id: expandedTopic, title: course.topics.find(t => t.id === expandedTopic)!.title }
+              : undefined
+            : undefined
+        }
+      />
     </div>
   );
 }

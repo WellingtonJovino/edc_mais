@@ -17,7 +17,7 @@ export default function ChatInterface({
   messages,
   onSendMessage,
   isLoading = false,
-  placeholder = 'Descreva o que você gostaria de aprender...',
+  placeholder = 'Descreva sua área de estudo...',
   uploadedFiles = [],
   onRemoveFile
 }: ChatInterfaceProps) {
@@ -52,8 +52,11 @@ export default function ChatInterface({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="text-center text-gray-500 mt-8">
-            <h3 className="text-lg font-medium mb-2">Bem-vindo ao EDC+ Learning System!</h3>
-            <p>Descreva o que você gostaria de aprender e eu vou criar um plano personalizado com os melhores vídeos do YouTube.</p>
+            <h3 className="text-lg font-medium mb-2">👋 Olá! Sou seu assistente educacional</h3>
+            <p>Conte qual área você quer estudar e criarei um curso científico com aulas estruturadas, vídeos especializados e exercícios.</p>
+            <div className="mt-4 text-xs text-gray-400">
+              💡 Exemplo: "Quero aprender Cálculo I para Engenharia Civil"
+            </div>
           </div>
         ) : (
           messages.map((message) => (
@@ -152,7 +155,7 @@ export default function ChatInterface({
               ))}
             </div>
             <div className="mt-2 text-xs text-blue-700">
-              💡 Estes arquivos serão enviados junto com sua próxima mensagem
+              🔗 Serão analisados junto com sua próxima mensagem
             </div>
           </div>
         )}

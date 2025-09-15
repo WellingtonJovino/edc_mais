@@ -6,6 +6,7 @@ import { LearningGoal, Topic, YouTubeVideo, LearningPlan as LearningPlanType } f
 import Image from 'next/image';
 import AcademicContent from './AcademicContent';
 import VideoPlayer from './VideoPlayer';
+import PrerequisitesSection from './PrerequisitesSection';
 
 interface LearningPlanProps {
   plan: LearningPlanType;
@@ -99,6 +100,11 @@ export default function LearningPlan({ plan, onTopicComplete, progress }: Learni
         <p className="text-sm text-gray-600 mt-2">{Math.round(progress)}% concluído</p>
       </div>
 
+      {/* Prerequisites Section */}
+      {plan.goal.prerequisites && plan.goal.prerequisites.length > 0 && (
+        <PrerequisitesSection prerequisites={plan.goal.prerequisites} />
+      )}
+
       {/* Validation and Analysis Section */}
       {(plan.topicValidation || plan.fileAnalysis || (plan.uploadedFiles && plan.uploadedFiles.length > 0)) && (
         <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg">
@@ -108,7 +114,7 @@ export default function LearningPlan({ plan, onTopicComplete, progress }: Learni
           >
             <div className="flex items-center space-x-3">
               <Search className="w-5 h-5 text-blue-600" />
-              <h3 className="font-semibold text-blue-900">Análise e Validação do Plano</h3>
+              <h3 className="font-semibold text-blue-900">Personalização e Materiais</h3>
             </div>
             <div className={`transform transition-transform ${expandedValidation ? 'rotate-180' : ''}`}>
               ↓
@@ -123,7 +129,7 @@ export default function LearningPlan({ plan, onTopicComplete, progress }: Learni
                 <div className="bg-white rounded-lg p-4 border border-blue-200">
                   <div className="flex items-center space-x-2 mb-3">
                     <CheckCircle className="w-5 h-5 text-green-600" />
-                    <h4 className="font-medium text-gray-900">Validação com Perplexity</h4>
+                    <h4 className="font-medium text-gray-900">Pesquisa Acadêmica</h4>
                   </div>
                   <p className="text-sm text-gray-600 mb-3">{plan.topicValidation.validationSummary}</p>
                   
@@ -131,7 +137,7 @@ export default function LearningPlan({ plan, onTopicComplete, progress }: Learni
                     <div className="mb-3">
                       <h5 className="font-medium text-orange-800 mb-2 flex items-center space-x-2">
                         <AlertCircle className="w-4 h-4" />
-                        <span>Tópicos adicionados pelo Perplexity:</span>
+                        <span>Tópicos identificados pela pesquisa:</span>
                       </h5>
                       <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
                         {plan.topicValidation.missingTopics.map((topic, idx) => (
@@ -159,7 +165,7 @@ export default function LearningPlan({ plan, onTopicComplete, progress }: Learni
                 <div className="bg-white rounded-lg p-4 border border-blue-200">
                   <div className="flex items-center space-x-2 mb-3">
                     <Upload className="w-5 h-5 text-blue-600" />
-                    <h4 className="font-medium text-gray-900">Arquivos Enviados ({plan.uploadedFiles.length})</h4>
+                    <h4 className="font-medium text-gray-900">Materiais de Estudo ({plan.uploadedFiles.length})</h4>
                   </div>
                   <div className="space-y-2 mb-3">
                     {plan.uploadedFiles.map((file) => (
@@ -173,12 +179,12 @@ export default function LearningPlan({ plan, onTopicComplete, progress }: Learni
                   
                   {plan.fileAnalysis && (
                     <div>
-                      <h5 className="font-medium text-blue-800 mb-2">Análise dos Arquivos:</h5>
+                      <h5 className="font-medium text-blue-800 mb-2">Análise dos Materiais:</h5>
                       <p className="text-sm text-gray-600 mb-2">{plan.fileAnalysis.coverageAnalysis}</p>
                       
                       {plan.fileAnalysis.extraInFiles.length > 0 && (
                         <div className="mb-2">
-                          <span className="font-medium text-green-800 text-sm">Tópicos extras encontrados nos arquivos:</span>
+                          <span className="font-medium text-green-800 text-sm">Tópicos extras identificados:</span>
                           <ul className="list-disc list-inside text-sm text-gray-600 mt-1">
                             {plan.fileAnalysis.extraInFiles.map((topic, idx) => (
                               <li key={idx}>{topic}</li>

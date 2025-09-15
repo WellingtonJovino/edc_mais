@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateHighQualityAulaTexto } from '@/lib/openai';
 import { buildRAGContextForTopic } from '@/lib/rag';
+import { generateImagesForAulaTexto } from '@/lib/image-generation';
 import {
   AulaTextoConfig,
   AulaTextoStructure,
@@ -24,6 +25,7 @@ interface GenerateRequest {
   uploadedFiles?: UploadedFile[];
   maxWords?: number;
   autoImprove?: boolean; // Se deve usar pipeline de melhoria automática
+  generateImages?: boolean; // Se deve gerar imagens automaticamente
 }
 
 interface GenerateResponse {
@@ -37,6 +39,7 @@ interface GenerateResponse {
     totalSnippets: number;
     improved: boolean;
     qualityScore: number;
+    imagesGenerated: boolean;
   };
   error?: string;
 }
@@ -68,7 +71,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<GenerateR
             ragSources: [],
             totalSnippets: 0,
             improved: false,
-            qualityScore: 0
+            qualityScore: 0,
+            imagesGenerated: false
           }
         },
         { status: 400 }
@@ -86,7 +90,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<GenerateR
             ragSources: [],
             totalSnippets: 0,
             improved: false,
-            qualityScore: 0
+            qualityScore: 0,
+            imagesGenerated: false
           }
         },
         { status: 400 }
@@ -157,13 +162,28 @@ export async function POST(request: NextRequest): Promise<NextResponse<GenerateR
       assessment = await evaluateAulaTextoQuality(aulaTexto, ragContextForAssessment);
     }
 
+    // 5. Gerar imagens se solicitado
+    let imagesGenerated = false;
+    if (body.generateImages) {
+      try {
+        console.log('🎨 Iniciando geração de imagens para aula-texto...');
+        aulaTexto = await generateImagesForAulaTexto(aulaTexto);
+        imagesGenerated = true;
+        console.log('✅ Imagens geradas e inseridas na aula-texto');
+      } catch (imageError) {
+        console.error('⚠️ Erro na geração de imagens (continuando sem imagens):', imageError);
+        // Continua sem as imagens em caso de erro
+      }
+    }
+
     const processingTime = Date.now() - startTime;
 
     console.log(`✅ Aula-texto gerada com sucesso em ${processingTime}ms`);
     console.log(`📊 Score final: ${assessment.score}/10, Melhorado: ${improved}`);
+    console.log(`🎨 Imagens geradas: ${imagesGenerated}`);
     console.log(`🔗 Fontes RAG: ${ragResult.sources.join(', ')}`);
 
-    // 5. Preparar resposta
+    // 6. Preparar resposta
     const response: GenerateResponse = {
       success: true,
       aulaTexto,
@@ -174,7 +194,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<GenerateR
         ragSources: ragResult.sources,
         totalSnippets: ragResult.totalSnippets,
         improved,
-        qualityScore: assessment.score
+        qualityScore: assessment.score,
+        imagesGenerated
       }
     };
 
@@ -193,7 +214,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<GenerateR
         ragSources: [],
         totalSnippets: 0,
         improved: false,
-        qualityScore: 0
+        qualityScore: 0,
+        imagesGenerated: false
       }
     };
 
@@ -218,7 +240,10 @@ export async function GET(): Promise<NextResponse> {
       'Sistema RAG com arquivos enviados e pesquisa acadêmica',
       'Avaliação automática de qualidade (rubrica científica)',
       'Melhoria automática quando score < 8',
-      'Estrutura pedagógica: Introdução → Desenvolvimento → Conclusão → Verificação'
+      'Estrutura pedagógica: Introdução → Desenvolvimento → Conclusão → Verificação',
+      'Geração automática de imagens educacionais com IA (DALL-E 3 + Gemini Nano)',
+      'Suporte a fórmulas matemáticas em LaTeX',
+      'Diagramas, gráficos e ilustrações contextualizadas'
     ],
     methods: ['POST'],
     parametros: {
@@ -234,7 +259,8 @@ export async function GET(): Promise<NextResponse> {
         },
         uploadedFiles: 'UploadedFile[] - Arquivos enviados pelo usuário',
         maxWords: 'number - Máximo de palavras (padrão: 1500)',
-        autoImprove: 'boolean - Usar melhoria automática (padrão: true)'
+        autoImprove: 'boolean - Usar melhoria automática (padrão: true)',
+        generateImages: 'boolean - Gerar imagens automaticamente (padrão: false)'
       }
     },
     exemplo_request: {

@@ -3,7 +3,11 @@ import {
   AulaTextoStructure,
   AulaTextoConfig,
   AulaTextoQualityAssessment,
-  RAGContext
+  RAGContext,
+  Prerequisite,
+  SupportCourse,
+  Module,
+  Section
 } from '@/types';
 import {
   buildAulaTextoPrompt,
@@ -20,12 +24,31 @@ const openai = new OpenAI({
 export interface LearningAnalysis {
   subject: string;
   level: 'beginner' | 'intermediate' | 'advanced';
+  modules: Array<{
+    title: string;
+    description: string;
+    order: number;
+    estimatedDuration: string;
+    sections: Array<{
+      title: string;
+      description: string;
+      order: number;
+      topics: Array<{
+        title: string;
+        description: string;
+        keywords: string[];
+        order: number;
+        contentType: 'video' | 'aula-texto' | 'exercise';
+        estimatedDuration: string;
+      }>;
+    }>;
+  }>;
   topics: Array<{
     title: string;
     description: string;
     keywords: string[];
     order: number;
-  }>;
+  }>; // Mantém compatibilidade
   searchQueries: string[];
 }
 
@@ -103,20 +126,47 @@ Seja específico, didático e focado no aprendizado prático.`;
   }
 }
 
-export async function analyzeLearningGoal(userMessage: string): Promise<LearningAnalysis> {
+export async function analyzeLearningGoal(userMessage: string, level?: string, uploadedFiles?: any[]): Promise<LearningAnalysis> {
   const prompt = `
-    Analise a seguinte mensagem do usuário e extraia:
-    1. O assunto que ele quer aprender
-    2. O nível de conhecimento atual (beginner, intermediate, advanced)
-    3. Uma lista organizada de tópicos para aprender (máximo 8 tópicos)
-    4. Queries de busca otimizadas para o YouTube
+    Analise a seguinte mensagem do usuário e crie uma estrutura hierárquica de aprendizado seguindo o modelo do Responde Aí:
+
+    ESTRUTURA DESEJADA:
+    - MÓDULOS (ex: "PRÉ-CÁLCULO", "LIMITES", "DERIVADAS")
+    - SEÇÕES dentro de cada módulo (ex: "Funções", "Gráficos", "Operações")
+    - TÓPICOS dentro de cada seção (ex: "Função do 1º grau", "Função quadrática")
 
     Mensagem do usuário: "${userMessage}"
+    ${level ? `Nível especificado: ${level}` : ''}
 
     Responda APENAS com um JSON válido no seguinte formato:
     {
       "subject": "nome do assunto",
       "level": "beginner|intermediate|advanced",
+      "modules": [
+        {
+          "title": "NOME DO MÓDULO",
+          "description": "Descrição do módulo",
+          "order": 1,
+          "estimatedDuration": "2 semanas",
+          "sections": [
+            {
+              "title": "Nome da Seção",
+              "description": "Descrição da seção",
+              "order": 1,
+              "topics": [
+                {
+                  "title": "Nome do Tópico",
+                  "description": "Descrição do tópico",
+                  "keywords": ["palavra-chave1", "palavra-chave2"],
+                  "order": 1,
+                  "contentType": "video|aula-texto|exercise",
+                  "estimatedDuration": "30 min"
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "topics": [
         {
           "title": "título do tópico",
@@ -127,11 +177,20 @@ export async function analyzeLearningGoal(userMessage: string): Promise<Learning
       ],
       "searchQueries": ["query1", "query2", "query3"]
     }
+
+    DIRETRIZES:
+    - Crie 2-4 módulos principais
+    - Cada módulo deve ter 2-4 seções
+    - Cada seção deve ter 3-6 tópicos
+    - Use nomes em MAIÚSCULO para módulos (como "FUNÇÕES", "LIMITES")
+    - Seções e tópicos em formato normal
+    - Varie o contentType: intercale vídeos, aula-texto e exercícios
+    - Seja específico e pedagógico na organização
   `;
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
     });
@@ -141,7 +200,24 @@ export async function analyzeLearningGoal(userMessage: string): Promise<Learning
       throw new Error('Resposta vazia da OpenAI');
     }
 
-    return JSON.parse(content) as LearningAnalysis;
+    const cleanContent = sanitizeJsonFromOpenAI(content);
+    const analysis = JSON.parse(cleanContent) as LearningAnalysis;
+
+    // Garantir que a estrutura de compatibilidade existe
+    if (!analysis.topics && analysis.modules) {
+      analysis.topics = analysis.modules.flatMap(module =>
+        module.sections.flatMap(section =>
+          section.topics.map(topic => ({
+            title: topic.title,
+            description: topic.description,
+            keywords: topic.keywords,
+            order: topic.order
+          }))
+        )
+      );
+    }
+
+    return analysis;
   } catch (error) {
     console.error('Erro ao analisar objetivo de aprendizado:', error);
     throw new Error('Falha ao processar sua solicitação. Tente novamente.');
@@ -280,7 +356,6 @@ export async function generateAulaTexto(config: AulaTextoConfig): Promise<{
       ],
       temperature: 0.3,
       max_tokens: 4000,
-      timeout: 30000, // 30 segundos timeout
     });
 
     const content = completion.choices[0]?.message?.content;
@@ -563,4 +638,214 @@ export async function generateHighQualityAulaTexto(
     tokensUsed: totalTokens,
     improved
   };
+}
+
+/**
+ * Gera lista de pré-requisitos para um curso
+ */
+export async function generatePrerequisites(
+  courseTitle: string,
+  courseDescription: string,
+  level: 'beginner' | 'intermediate' | 'advanced',
+  topics: string[]
+): Promise<Prerequisite[]> {
+  const prompt = `Como especialista em educação, analise o curso "${courseTitle}" (nível ${level}) e identifique os pré-requisitos essenciais.
+
+DESCRIÇÃO DO CURSO: ${courseDescription}
+
+TÓPICOS DO CURSO:
+${topics.map((topic, i) => `${i + 1}. ${topic}`).join('\n')}
+
+Identifique pré-requisitos categorizados por importância:
+- ESSENCIAL: Conhecimento absolutamente necessário para compreender o curso
+- RECOMENDADO: Conhecimento que facilita significativamente o aprendizado
+- OPCIONAL: Conhecimento que pode ser útil mas não impede o progresso
+
+Para cada pré-requisito, estime o tempo necessário para dominar o conhecimento.
+
+Responda APENAS com JSON válido no formato:
+{
+  "prerequisites": [
+    {
+      "id": "prereq-1",
+      "topic": "Nome do pré-requisito",
+      "description": "Por que é necessário e como se relaciona com o curso",
+      "importance": "essential|recommended|optional",
+      "estimatedTime": "tempo estimado (ex: '2 horas', '1 semana')",
+      "resources": [
+        {
+          "type": "course|video|article|book",
+          "title": "Nome do recurso",
+          "description": "Breve descrição do que cobre"
+        }
+      ]
+    }
+  ]
+}
+
+IMPORTANTE: Retorne apenas o JSON, sem explicações adicionais.`;
+
+  try {
+    console.log(`🔍 Gerando pré-requisitos para: "${courseTitle}"`);
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Você é um especialista em design curricular e pré-requisitos educacionais. Responda sempre com JSON válido.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 1500,
+      temperature: 0.3,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('Resposta vazia da OpenAI');
+    }
+
+    // Parse JSON da resposta
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Não foi possível encontrar JSON na resposta');
+    }
+
+    const data = JSON.parse(jsonMatch[0]);
+
+    if (!data.prerequisites || !Array.isArray(data.prerequisites)) {
+      throw new Error('Formato de resposta inválido');
+    }
+
+    console.log(`✅ ${data.prerequisites.length} pré-requisitos identificados`);
+
+    return data.prerequisites;
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar pré-requisitos:', error);
+
+    // Fallback com pré-requisitos básicos baseados no nível
+    const fallbackPrerequisites: Prerequisite[] = [];
+
+    if (level === 'intermediate' || level === 'advanced') {
+      fallbackPrerequisites.push({
+        id: 'basic-math',
+        topic: 'Matemática Básica',
+        description: 'Conhecimentos fundamentais de álgebra e aritmética necessários para acompanhar o curso.',
+        importance: 'essential',
+        estimatedTime: '1-2 semanas',
+        resources: [{
+          type: 'course',
+          title: 'Revisão de Matemática Básica',
+          description: 'Curso de nivelamento em matemática fundamental'
+        }]
+      });
+    }
+
+    if (level === 'advanced') {
+      fallbackPrerequisites.push({
+        id: 'intermediate-concepts',
+        topic: 'Conceitos Intermediários',
+        description: 'Domínio dos conceitos de nível intermediário da área de estudo.',
+        importance: 'essential',
+        estimatedTime: '2-4 semanas',
+        resources: [{
+          type: 'course',
+          title: 'Curso Intermediário da Área',
+          description: 'Preparação para conceitos avançados'
+        }]
+      });
+    }
+
+    return fallbackPrerequisites;
+  }
+}
+
+/**
+ * Detecta dificuldades do aluno e sugere cursos de apoio
+ */
+export async function detectLearningDifficulties(
+  chatHistory: string[],
+  currentTopic: string,
+  courseTitle: string
+): Promise<{
+  hasProblems: boolean;
+  missingKnowledge: string[];
+  suggestedSupportCourses: SupportCourse[];
+  recommendation: string;
+}> {
+  const prompt = `Analise as dúvidas do aluno para detectar se há dificuldades com pré-requisitos.
+
+CURSO: "${courseTitle}"
+TÓPICO ATUAL: "${currentTopic}"
+
+HISTÓRICO DE DÚVIDAS:
+${chatHistory.map((msg, i) => `${i + 1}. ${msg}`).join('\n')}
+
+Com base nas perguntas, identifique:
+1. Se o aluno tem dificuldades com conhecimentos básicos necessários
+2. Quais conhecimentos específicos estão faltando
+3. Se seria útil fazer um curso de apoio antes de continuar
+
+Responda APENAS com JSON:
+{
+  "hasProblems": boolean,
+  "missingKnowledge": ["conhecimento 1", "conhecimento 2"],
+  "recommendation": "texto explicando a situação e recomendação",
+  "suggestedCourses": [
+    {
+      "id": "support-1",
+      "title": "Título do curso de apoio",
+      "description": "Para que serve e como ajuda",
+      "prerequisiteFor": "tópico atual",
+      "topics": ["tópico 1", "tópico 2"],
+      "estimatedDuration": "tempo estimado",
+      "difficulty": "beginner|intermediate"
+    }
+  ]
+}`;
+
+  try {
+    console.log(`🔍 Analisando dificuldades para: "${currentTopic}"`);
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Você é um especialista em detectar lacunas de conhecimento em estudantes. Responda sempre com JSON válido.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 1000,
+      temperature: 0.3,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('Resposta vazia da OpenAI');
+    }
+
+    // Parse JSON da resposta
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Não foi possível encontrar JSON na resposta');
+    }
+
+    const data = JSON.parse(jsonMatch[0]);
+
+    console.log(`✅ Análise de dificuldades concluída: ${data.hasProblems ? 'Problemas detectados' : 'Sem problemas'}`);
+
+    return {
+      hasProblems: data.hasProblems || false,
+      missingKnowledge: data.missingKnowledge || [],
+      suggestedSupportCourses: data.suggestedCourses || [],
+      recommendation: data.recommendation || 'Continue com o curso atual.'
+    };
+
+  } catch (error) {
+    console.error('❌ Erro ao detectar dificuldades:', error);
+
+    return {
+      hasProblems: false,
+      missingKnowledge: [],
+      suggestedSupportCourses: [],
+      recommendation: 'Continue estudando. Se tiver dúvidas, use o chat para pedir ajuda.'
+    };
+  }
 }

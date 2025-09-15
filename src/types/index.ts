@@ -1,11 +1,84 @@
+export interface Prerequisite {
+  id: string;
+  topic: string;
+  description: string;
+  importance: 'essential' | 'recommended' | 'optional';
+  estimatedTime: string; // ex: "2 horas", "1 semana"
+  resources?: {
+    type: 'course' | 'video' | 'article' | 'book';
+    title: string;
+    url?: string;
+    description?: string;
+  }[];
+}
+
+export interface SupportCourse {
+  id: string;
+  title: string;
+  description: string;
+  prerequisiteFor: string; // ID do tópico que precisa desta base
+  topics: string[]; // Lista de tópicos do curso de apoio
+  estimatedDuration: string;
+  difficulty: 'beginner' | 'intermediate';
+}
+
 export interface LearningGoal {
   id: string;
   title: string;
   description: string;
   level: 'beginner' | 'intermediate' | 'advanced';
-  topics: Topic[];
+  modules: Module[]; // Estrutura hierárquica: módulos > seções > tópicos
+  topics: Topic[]; // Mantém compatibilidade com código existente
+  prerequisites?: Prerequisite[];
+  supportCourses?: SupportCourse[];
   created_at: string;
   updated_at: string;
+}
+
+export interface Module {
+  id: string;
+  title: string;
+  description: string;
+  order: number;
+  sections: Section[];
+  completed: boolean;
+  estimatedDuration: string;
+  color?: string; // Para diferenciação visual
+}
+
+export interface Section {
+  id: string;
+  title: string;
+  description: string;
+  order: number;
+  topics: Topic[];
+  completed: boolean;
+  estimatedDuration: string;
+  learningObjectives?: string[];
+}
+
+export interface SubTopic {
+  id: string;
+  title: string;
+  description: string;
+  order: number;
+  content: SubTopicContent;
+  completed: boolean;
+  estimatedDuration: string;
+  hasDoubtButton?: boolean; // Para o botão de dúvidas específico
+}
+
+export interface SubTopicContent {
+  type: 'video' | 'aula-texto' | 'exercise' | 'quiz';
+  data: YouTubeVideo | AulaTextoStructure | ExerciseSet | any;
+}
+
+export interface ExerciseSet {
+  id: string;
+  title: string;
+  exercises: ExerciseItem[];
+  difficulty: 'easy' | 'medium' | 'hard';
+  totalQuestions: number;
 }
 
 export interface Topic {
@@ -15,12 +88,19 @@ export interface Topic {
   order: number;
   videos: YouTubeVideo[];
   academicContent?: AcademicContent;
+  aulaTexto?: AulaTextoStructure; // Nova aula-texto aprimorada
+  subtopics?: SubTopic[]; // Suporte a subtópicos
   completed: boolean;
+  estimatedDuration?: string;
+  hasDoubtButton?: boolean; // Botão de dúvidas específico
   // Novas propriedades para melhor aprendizado
   detailedDescription?: string;
   learningObjectives?: string[];
   keyTerms?: string[];
   searchKeywords?: string[];
+  // Para o layout do Responde Aí
+  contentType?: 'video' | 'aula-texto' | 'exercise' | 'mixed';
+  difficulty?: 'easy' | 'medium' | 'hard';
 }
 
 export interface YouTubeVideo {
@@ -172,6 +252,25 @@ export interface AulaTextoStructure {
       figuras?: Array<{
         descricao: string;
         imagePrompt: string;
+        tipo: 'diagrama' | 'grafico' | 'ilustracao' | 'esquema' | 'foto';
+        posicao: 'inicio' | 'meio' | 'fim';
+        tamanho: 'pequeno' | 'medio' | 'grande';
+        legenda: string;
+        imageUrl?: string; // URL da imagem gerada
+      }>;
+      formulas?: Array<{
+        nome: string;
+        latex: string;
+        explicacao: string;
+        aplicacao: string;
+      }>;
+      graficos?: Array<{
+        titulo: string;
+        tipo: 'linha' | 'barra' | 'pizza' | 'dispersao' | 'funcao';
+        descricao: string;
+        dados?: any; // Dados para gerar o gráfico
+        imagePrompt: string; // Para gerar via IA
+        imageUrl?: string;
       }>;
     }>;
   };
