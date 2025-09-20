@@ -1,0 +1,660 @@
+[
+  {
+    "file": "src/lib/youtube.ts",
+    "reason": "Sistema complexo de busca e ranking de vídeos YouTube com API key, queries inteligentes, scoring e fallback. Não essencial para MVP de estrutura de curso.",
+    "usedBy": [
+      "src/app/api/load-topic-content/route.ts",
+      "src/components/HierarchicalCourseView.tsx",
+      "src/components/VideoPlayer.tsx"
+    ],
+    "suggestedAction": "archive",
+    "category": "youtube-integration",
+    "complexity": "high",
+    "linesOfCode": 671,
+    "apiDependencies": ["YOUTUBE_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/api/generate-aula-texto/route.ts",
+    "reason": "Endpoint para geração automática de aulas textuais completas com RAG, avaliação de qualidade e melhoria automática. Vai além do escopo MVP de estruturação.",
+    "usedBy": [
+      "src/components/EnhancedAulaTexto.tsx",
+      "src/components/AulaTextoViewer.tsx"
+    ],
+    "suggestedAction": "archive",
+    "category": "content-generation",
+    "complexity": "high",
+    "linesOfCode": 320,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/api/review-aula-texto/route.ts",
+    "reason": "Endpoint para revisão e avaliação de qualidade de aulas-texto geradas. Funcionalidade experimental não relacionada ao MVP.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "content-generation",
+    "complexity": "medium",
+    "linesOfCode": 150,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/image-generation.ts",
+    "reason": "Sistema de geração de imagens educacionais usando DALL-E 3 e integração experimental com Gemini Nano. Não necessário para estruturação de cursos.",
+    "usedBy": [
+      "src/app/api/generate-aula-texto/route.ts",
+      "src/app/api/generate-images/route.ts",
+      "src/components/EducationalImageGenerator.tsx"
+    ],
+    "suggestedAction": "archive",
+    "category": "image-generation",
+    "complexity": "high",
+    "linesOfCode": 285,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/api/generate-images/route.ts",
+    "reason": "Endpoint para geração de imagens educacionais. Feature experimental que não faz parte do MVP de estruturação.",
+    "usedBy": [
+      "src/components/EducationalImageGenerator.tsx"
+    ],
+    "suggestedAction": "archive",
+    "category": "image-generation",
+    "complexity": "medium",
+    "linesOfCode": 100,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/api/upload/route.ts",
+    "reason": "Sistema complexo de upload de arquivos com integração OpenAI File Search, vector stores e assistants. Vai além do MVP básico.",
+    "usedBy": [
+      "src/components/FileUpload.tsx",
+      "src/app/api/analyze/route.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "file-processing",
+    "complexity": "high",
+    "linesOfCode": 235,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "src/lib/openai-files.ts",
+    "reason": "Sistema avançado de criação de assistants, vector stores e file search da OpenAI. Complexidade além do MVP.",
+    "usedBy": [
+      "src/app/api/upload/route.ts",
+      "src/app/api/analyze/route.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "file-processing",
+    "complexity": "high",
+    "linesOfCode": 200,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "src/components/VideoPlayer.tsx",
+    "reason": "Componente para reprodução de vídeos YouTube embedados. Não necessário para MVP de estruturação.",
+    "usedBy": [
+      "src/components/HierarchicalCourseView.tsx"
+    ],
+    "suggestedAction": "archive",
+    "category": "video-playback",
+    "complexity": "low",
+    "linesOfCode": 80,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/components/EducationalImageGenerator.tsx",
+    "reason": "Interface para geração de imagens educacionais. Feature experimental não relacionada ao MVP.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "image-generation",
+    "complexity": "medium",
+    "linesOfCode": 120,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/components/GeminiNanoImageGenerator.tsx",
+    "reason": "Componente experimental para geração de imagens usando Gemini Nano local. Tecnologia experimental não estável.",
+    "usedBy": [
+      "src/app/test-gemini/page.tsx"
+    ],
+    "suggestedAction": "archive",
+    "category": "experimental-ai",
+    "complexity": "medium",
+    "linesOfCode": 150,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/test-gemini/page.tsx",
+    "reason": "Página de teste para funcionalidades experimentais do Gemini Nano. Código de POC não produtivo.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "experimental-ai",
+    "complexity": "low",
+    "linesOfCode": 100,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/components/AulaTextoViewer.tsx",
+    "reason": "Visualizador para aulas-texto geradas automaticamente. Relacionado à geração de conteúdo, não estruturação.",
+    "usedBy": [
+      "src/components/RespondeAi/AulaTexto.tsx"
+    ],
+    "suggestedAction": "archive",
+    "category": "content-viewing",
+    "complexity": "medium",
+    "linesOfCode": 200,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/components/EnhancedAulaTexto.tsx",
+    "reason": "Componente avançado para exibição de aulas-texto com funcionalidades experimentais. Não essencial para MVP.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "content-viewing",
+    "complexity": "high",
+    "linesOfCode": 300,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/prompts/aulaTexto.ts",
+    "reason": "Prompts especializados para geração de aulas-texto. Relacionado à geração de conteúdo, não estruturação.",
+    "usedBy": [
+      "src/lib/openai.ts"
+    ],
+    "suggestedAction": "archive",
+    "category": "content-generation",
+    "complexity": "medium",
+    "linesOfCode": 250,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/prompts/aulaTextoAvancado.ts",
+    "reason": "Prompts avançados para geração de aulas-texto com recursos experimentais. Não relacionado ao MVP.",
+    "usedBy": [
+      "src/lib/openai.ts"
+    ],
+    "suggestedAction": "archive",
+    "category": "content-generation",
+    "complexity": "medium",
+    "linesOfCode": 180,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/pdf-intelligence.ts",
+    "reason": "Sistema avançado de análise inteligente de PDFs com IA. Funcionalidade além do escopo MVP básico.",
+    "usedBy": [
+      "src/lib/rag.ts"
+    ],
+    "suggestedAction": "archive",
+    "category": "ai-analysis",
+    "complexity": "high",
+    "linesOfCode": 300,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/rag.ts",
+    "reason": "Sistema RAG (Retrieval Augmented Generation) complexo para contexto de documentos. Vai além do MVP de estruturação.",
+    "usedBy": [
+      "src/app/api/generate-aula-texto/route.ts",
+      "src/lib/openai.ts"
+    ],
+    "suggestedAction": "archive",
+    "category": "ai-analysis",
+    "complexity": "high",
+    "linesOfCode": 400,
+    "apiDependencies": ["OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/knowledge-assessment.ts",
+    "reason": "Sistema de avaliação de conhecimento prévio e personalização de cursos. Feature experimental não essencial para MVP.",
+    "usedBy": [
+      "src/app/api/analyze/route.ts"
+    ],
+    "suggestedAction": "archive",
+    "category": "personalization",
+    "complexity": "high",
+    "linesOfCode": 350,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/personalizationEngine.ts",
+    "reason": "Engine de personalização avançada com machine learning. Funcionalidade experimental além do MVP.",
+    "usedBy": [
+      "src/lib/course-generation-pipeline.ts"
+    ],
+    "suggestedAction": "archive",
+    "category": "personalization",
+    "complexity": "high",
+    "linesOfCode": 280,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/pedagogicalEngine.ts",
+    "reason": "Engine pedagógico avançado com algoritmos de aprendizado. Complexidade além do escopo MVP.",
+    "usedBy": [
+      "src/lib/course-generation-pipeline.ts"
+    ],
+    "suggestedAction": "archive",
+    "category": "pedagogy",
+    "complexity": "high",
+    "linesOfCode": 320,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/module-enrichment.ts",
+    "reason": "Sistema de enriquecimento automático de módulos com IA. Feature experimental não necessária para MVP.",
+    "usedBy": [
+      "src/lib/course-generation-pipeline.ts"
+    ],
+    "suggestedAction": "archive",
+    "category": "content-enhancement",
+    "complexity": "medium",
+    "linesOfCode": 200,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/course-generation-pipeline.ts",
+    "reason": "Pipeline completo de geração de cursos com múltiplas engines. Sistema complexo que pode ser simplificado para MVP.",
+    "usedBy": [
+      "src/app/api/analyze/route.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "course-generation",
+    "complexity": "very-high",
+    "linesOfCode": 500,
+    "apiDependencies": ["OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "src/lib/chunking.ts",
+    "reason": "Sistema de chunking de texto para processamento de documentos grandes. Pode ser útil mas não essencial para MVP.",
+    "usedBy": [
+      "src/lib/rag.ts"
+    ],
+    "suggestedAction": "archive",
+    "category": "text-processing",
+    "complexity": "medium",
+    "linesOfCode": 150,
+    "apiDependencies": [],
+    "mvpRelevance": "low"
+  },
+  {
+    "file": "src/lib/cache.ts",
+    "reason": "Sistema de cache para otimização de performance. Útil mas não crítico para MVP inicial.",
+    "usedBy": [
+      "src/lib/perplexity.ts",
+      "src/lib/websearch.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "optimization",
+    "complexity": "low",
+    "linesOfCode": 80,
+    "apiDependencies": [],
+    "mvpRelevance": "low"
+  },
+  {
+    "file": "src/components/FileUpload.tsx",
+    "reason": "Componente de upload de arquivos com drag & drop. Funcionalidade adicional que pode ser simplificada para MVP.",
+    "usedBy": [
+      "src/app/page.tsx"
+    ],
+    "suggestedAction": "review",
+    "category": "file-handling",
+    "complexity": "medium",
+    "linesOfCode": 180,
+    "apiDependencies": [],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "src/components/RespondeAi/AulaTexto.tsx",
+    "reason": "Componente específico para interface RespondeAi com aulas-texto. Não relacionado ao MVP de estruturação.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "ui-specialized",
+    "complexity": "medium",
+    "linesOfCode": 250,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/components/RespondeAi/CourseLayout.tsx",
+    "reason": "Layout específico para interface RespondeAi. Interface alternativa não essencial para MVP.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "ui-specialized",
+    "complexity": "medium",
+    "linesOfCode": 200,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/components/RespondeAi/Exercises.tsx",
+    "reason": "Componente para exercícios na interface RespondeAi. Não relacionado ao MVP de estruturação.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "ui-specialized",
+    "complexity": "medium",
+    "linesOfCode": 180,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/components/RespondeAi/Sidebar.tsx",
+    "reason": "Sidebar específica para interface RespondeAi. Interface especializada não necessária para MVP.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "ui-specialized",
+    "complexity": "low",
+    "linesOfCode": 100,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/components/RespondeAi/TopicView.tsx",
+    "reason": "Visualização de tópicos para interface RespondeAi. Interface especializada não essencial para MVP.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "ui-specialized",
+    "complexity": "medium",
+    "linesOfCode": 150,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/api/load-topic-content/route.ts",
+    "reason": "Endpoint para carregamento dinâmico de conteúdo de tópicos (vídeos, conteúdo acadêmico). Funcionalidade adicional além do MVP.",
+    "usedBy": [
+      "src/components/HierarchicalCourseView.tsx"
+    ],
+    "suggestedAction": "archive",
+    "category": "content-loading",
+    "complexity": "high",
+    "linesOfCode": 300,
+    "apiDependencies": ["YOUTUBE_API_KEY", "OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/ai-book-recommendations.ts",
+    "reason": "Sistema de recomendação de livros com IA. Feature útil mas não crítica para MVP de estruturação.",
+    "usedBy": [
+      "src/app/api/analyze/route.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "recommendations",
+    "complexity": "medium",
+    "linesOfCode": 250,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "low"
+  },
+  {
+    "file": "src/lib/book-validation.ts",
+    "reason": "Sistema de validação de recomendações de livros. Complementar ao sistema de recomendações.",
+    "usedBy": [
+      "src/lib/ai-book-recommendations.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "recommendations",
+    "complexity": "low",
+    "linesOfCode": 100,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/evidence-scoring.ts",
+    "reason": "Sistema de pontuação baseado em evidências para validação. Algoritmo experimental não essencial para MVP.",
+    "usedBy": [
+      "src/lib/book-validation.ts"
+    ],
+    "suggestedAction": "archive",
+    "category": "validation",
+    "complexity": "medium",
+    "linesOfCode": 120,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/academic-books-database.ts",
+    "reason": "Base de dados estática de livros acadêmicos. Dados hardcoded que podem ser simplificados.",
+    "usedBy": [
+      "src/lib/ai-book-recommendations.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "data",
+    "complexity": "low",
+    "linesOfCode": 200,
+    "apiDependencies": [],
+    "mvpRelevance": "low"
+  },
+  {
+    "file": "src/lib/academic-curriculum-templates.ts",
+    "reason": "Templates de currículo acadêmico hardcoded. Dados estáticos que podem ser simplificados para MVP.",
+    "usedBy": [
+      "src/lib/university-courses-detector.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "data",
+    "complexity": "medium",
+    "linesOfCode": 180,
+    "apiDependencies": [],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "src/lib/university-courses-detector.ts",
+    "reason": "Detector de cursos universitários com templates específicos. Pode ser simplificado para MVP.",
+    "usedBy": [
+      "src/lib/course-generation-pipeline.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "detection",
+    "complexity": "medium",
+    "linesOfCode": 150,
+    "apiDependencies": [],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "src/lib/probability-statistics-template.ts",
+    "reason": "Template específico para cursos de probabilidade e estatística. Template muito específico não necessário para MVP.",
+    "usedBy": [
+      "src/lib/academic-curriculum-templates.ts"
+    ],
+    "suggestedAction": "archive",
+    "category": "templates",
+    "complexity": "low",
+    "linesOfCode": 80,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/lib/prerequisite-detector.ts",
+    "reason": "Detector avançado de pré-requisitos com análise semântica. Funcionalidade útil mas não crítica para MVP.",
+    "usedBy": [
+      "src/lib/openai.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "analysis",
+    "complexity": "medium",
+    "linesOfCode": 160,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "low"
+  },
+  {
+    "file": "new_functions.ts",
+    "reason": "Arquivo na raiz com novas funcionalidades experimentais. Deveria estar em src/lib/ e pode conter código experimental.",
+    "usedBy": [
+      "src/app/api/analyze/route.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "experimental",
+    "complexity": "medium",
+    "linesOfCode": 200,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "final_validation.ts",
+    "reason": "Arquivo na raiz com sistema de validação final. Deveria estar em src/lib/ e pode ser simplificado.",
+    "usedBy": [
+      "src/app/api/analyze/route.ts"
+    ],
+    "suggestedAction": "review",
+    "category": "validation",
+    "complexity": "medium",
+    "linesOfCode": 180,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "test-detection.js",
+    "reason": "Arquivo de teste JavaScript na raiz. Script de desenvolvimento que não deveria estar em produção.",
+    "usedBy": [],
+    "suggestedAction": "delete",
+    "category": "development",
+    "complexity": "low",
+    "linesOfCode": 50,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/api/analyze-with-files/route.ts",
+    "reason": "Endpoint alternativo para análise com arquivos. Pode ser duplicação de funcionalidade do endpoint principal.",
+    "usedBy": [],
+    "suggestedAction": "review",
+    "category": "api-routes",
+    "complexity": "medium",
+    "linesOfCode": 150,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "src/app/api/courses/[id]/chat/route.ts",
+    "reason": "Sistema de chat para cursos específicos. Funcionalidade avançada não necessária para MVP de estruturação.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "chat-system",
+    "complexity": "high",
+    "linesOfCode": 200,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/api/courses/support/create/route.ts",
+    "reason": "Sistema de suporte para criação de cursos. Funcionalidade adicional não crítica para MVP.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "support-system",
+    "complexity": "medium",
+    "linesOfCode": 120,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/api/create-course/route.ts",
+    "reason": "Endpoint para criação completa de cursos com salvamento. Pode conter funcionalidades além do MVP de estruturação.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "course-creation",
+    "complexity": "high",
+    "linesOfCode": 300,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "src/app/api/generate-syllabus/route.ts",
+    "reason": "Endpoint específico para geração de syllabus. Pode ser redundante com o endpoint principal de análise.",
+    "usedBy": [],
+    "suggestedAction": "review",
+    "category": "syllabus-generation",
+    "complexity": "medium",
+    "linesOfCode": 180,
+    "apiDependencies": ["OPENAI_API_KEY"],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "src/app/api/plans/[id]/route.ts",
+    "reason": "API para gerenciamento específico de planos por ID. Funcionalidade de CRUD não essencial para MVP.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "plan-management",
+    "complexity": "medium",
+    "linesOfCode": 100,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/api/plans/route.ts",
+    "reason": "API para listagem e criação de planos. Sistema de persistência não crítico para MVP de estruturação.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "plan-management",
+    "complexity": "medium",
+    "linesOfCode": 120,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/courses/[id]/page.tsx",
+    "reason": "Página para visualização específica de cursos. Interface não essencial para MVP de estruturação.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "course-viewing",
+    "complexity": "medium",
+    "linesOfCode": 200,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/app/courses/page.tsx",
+    "reason": "Página de listagem de cursos. Interface não crítica para MVP de estruturação básica.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "course-listing",
+    "complexity": "low",
+    "linesOfCode": 100,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  },
+  {
+    "file": "src/components/ChatInterface.tsx",
+    "reason": "Interface de chat genérica. Pode ser útil mas não crítica para MVP de estruturação.",
+    "usedBy": [
+      "src/app/page.tsx"
+    ],
+    "suggestedAction": "review",
+    "category": "chat-interface",
+    "complexity": "medium",
+    "linesOfCode": 180,
+    "apiDependencies": [],
+    "mvpRelevance": "partial"
+  },
+  {
+    "file": "src/components/CourseChat.tsx",
+    "reason": "Chat específico para cursos. Funcionalidade adicional não necessária para MVP.",
+    "usedBy": [],
+    "suggestedAction": "archive",
+    "category": "chat-interface",
+    "complexity": "medium",
+    "linesOfCode": 150,
+    "apiDependencies": [],
+    "mvpRelevance": "none"
+  }
+]

@@ -1,0 +1,18 @@
+From 7c3b028067f468fe8e4a007b69ef56e6df19ecb5 Mon Sep 17 00:00:00 2001
+From: unknown <wellington.rozendosilva@gmail.com>
+Date: Sat, 20 Sep 2025 11:23:04 -0300
+Subject: [PATCH 4/4] archive: mover arquivos experimentais restantes para
+ src/archive (final)
+
+---
+ src/{ => archive}/components/CourseChat.tsx | 0
+ 1 file changed, 0 insertions(+), 0 deletions(-)
+ rename src/{ => archive}/components/CourseChat.tsx (100%)
+
+diff --git a/src/components/CourseChat.tsx b/src/archive/components/CourseChat.tsx
+similarity index 100%
+rename from src/components/CourseChat.tsx
+rename to src/archive/components/CourseChat.tsx
+-- 
+2.51.0.windows.1
+

@@ -1,0 +1,120 @@
+From d1ee4d2e3acf59622dfd7efb19cb522032621586 Mon Sep 17 00:00:00 2001
+From: unknown <wellington.rozendosilva@gmail.com>
+Date: Sat, 20 Sep 2025 11:23:01 -0300
+Subject: [PATCH 1/4] archive: mover lote de 10 arquivos experimentais para
+ src/archive (batch 1)
+
+---
+ src/archive/app/README.md                            | 12 ++++++++++++
+ src/{app/test-gemini => archive/app}/page.tsx        |  0
+ .../api/generate-aula-texto => archive/app}/route.ts |  0
+ src/{ => archive}/components/AulaTextoViewer.tsx     |  0
+ .../components/EducationalImageGenerator.tsx         |  0
+ .../components/GeminiNanoImageGenerator.tsx          |  0
+ src/archive/components/README.md                     | 12 ++++++++++++
+ src/{ => archive}/components/VideoPlayer.tsx         |  0
+ src/archive/lib/README.md                            | 12 ++++++++++++
+ src/{ => archive}/lib/image-generation.ts            |  0
+ src/{ => archive}/lib/youtube.ts                     |  0
+ 11 files changed, 36 insertions(+)
+ create mode 100644 src/archive/app/README.md
+ rename src/{app/test-gemini => archive/app}/page.tsx (100%)
+ rename src/{app/api/generate-aula-texto => archive/app}/route.ts (100%)
+ rename src/{ => archive}/components/AulaTextoViewer.tsx (100%)
+ rename src/{ => archive}/components/EducationalImageGenerator.tsx (100%)
+ rename src/{ => archive}/components/GeminiNanoImageGenerator.tsx (100%)
+ create mode 100644 src/archive/components/README.md
+ rename src/{ => archive}/components/VideoPlayer.tsx (100%)
+ create mode 100644 src/archive/lib/README.md
+ rename src/{ => archive}/lib/image-generation.ts (100%)
+ rename src/{ => archive}/lib/youtube.ts (100%)
+
+diff --git a/src/archive/app/README.md b/src/archive/app/README.md
+new file mode 100644
+index 0000000..8547b7f
+--- /dev/null
++++ b/src/archive/app/README.md
+@@ -0,0 +1,12 @@
++﻿# Arquivo(s) arquivado: app
++
++Movido em 20250920-112256 por script cleanup-archive.ps1.
++Motivo: funcionalidade experimental não essencial ao MVP.
++
++Como restaurar:
++1. git checkout cleanup/pre-cleanup
++2. git mv src/archive/app/<filename> <original-path>
++3. git commit -m "restore: app"
++
++Observações:
++Endpoint para geraÃ§Ã£o automÃ¡tica de aulas textuais completas com RAG, avaliaÃ§Ã£o de qualidade e melhoria automÃ¡tica. Vai alÃ©m do escopo MVP de estruturaÃ§Ã£o.
+diff --git a/src/app/test-gemini/page.tsx b/src/archive/app/page.tsx
+similarity index 100%
+rename from src/app/test-gemini/page.tsx
+rename to src/archive/app/page.tsx
+diff --git a/src/app/api/generate-aula-texto/route.ts b/src/archive/app/route.ts
+similarity index 100%
+rename from src/app/api/generate-aula-texto/route.ts
+rename to src/archive/app/route.ts
+diff --git a/src/components/AulaTextoViewer.tsx b/src/archive/components/AulaTextoViewer.tsx
+similarity index 100%
+rename from src/components/AulaTextoViewer.tsx
+rename to src/archive/components/AulaTextoViewer.tsx
+diff --git a/src/components/EducationalImageGenerator.tsx b/src/archive/components/EducationalImageGenerator.tsx
+similarity index 100%
+rename from src/components/EducationalImageGenerator.tsx
+rename to src/archive/components/EducationalImageGenerator.tsx
+diff --git a/src/components/GeminiNanoImageGenerator.tsx b/src/archive/components/GeminiNanoImageGenerator.tsx
+similarity index 100%
+rename from src/components/GeminiNanoImageGenerator.tsx
+rename to src/archive/components/GeminiNanoImageGenerator.tsx
+diff --git a/src/archive/components/README.md b/src/archive/components/README.md
+new file mode 100644
+index 0000000..80e349d
+--- /dev/null
++++ b/src/archive/components/README.md
+@@ -0,0 +1,12 @@
++﻿# Arquivo(s) arquivado: components
++
++Movido em 20250920-112256 por script cleanup-archive.ps1.
++Motivo: funcionalidade experimental não essencial ao MVP.
++
++Como restaurar:
++1. git checkout cleanup/pre-cleanup
++2. git mv src/archive/components/<filename> <original-path>
++3. git commit -m "restore: components"
++
++Observações:
++Componente para reproduÃ§Ã£o de vÃ­deos YouTube embedados. NÃ£o necessÃ¡rio para MVP de estruturaÃ§Ã£o.
+diff --git a/src/components/VideoPlayer.tsx b/src/archive/components/VideoPlayer.tsx
+similarity index 100%
+rename from src/components/VideoPlayer.tsx
+rename to src/archive/components/VideoPlayer.tsx
+diff --git a/src/archive/lib/README.md b/src/archive/lib/README.md
+new file mode 100644
+index 0000000..e0adb32
+--- /dev/null
++++ b/src/archive/lib/README.md
+@@ -0,0 +1,12 @@
++﻿# Arquivo(s) arquivado: lib
++
++Movido em 20250920-112256 por script cleanup-archive.ps1.
++Motivo: funcionalidade experimental não essencial ao MVP.
++
++Como restaurar:
++1. git checkout cleanup/pre-cleanup
++2. git mv src/archive/lib/<filename> <original-path>
++3. git commit -m "restore: lib"
++
++Observações:
++Sistema complexo de busca e ranking de vÃ­deos YouTube com API key, queries inteligentes, scoring e fallback. NÃ£o essencial para MVP de estrutura de curso.
+diff --git a/src/lib/image-generation.ts b/src/archive/lib/image-generation.ts
+similarity index 100%
+rename from src/lib/image-generation.ts
+rename to src/archive/lib/image-generation.ts
+diff --git a/src/lib/youtube.ts b/src/archive/lib/youtube.ts
+similarity index 100%
+rename from src/lib/youtube.ts
+rename to src/archive/lib/youtube.ts
+-- 
+2.51.0.windows.1
+

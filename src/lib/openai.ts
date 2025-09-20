@@ -27,15 +27,16 @@ import {
   Section,
   BookRecommendation
 } from '@/types';
-import {
-  buildAulaTextoPrompt,
-  SYSTEM_PROMPT_AVALIACAO,
-  SYSTEM_PROMPT_MELHORIA,
-  validateAulaTextoStructure,
-  QUALITY_CHECKLIST
-} from './prompts/aulaTexto';
-import { buildAulaTextoRespondAi } from './prompts/aulaTextoAvancado';
-import { generateScoringReport } from './evidence-scoring';
+// Imports arquivados para manter foco no MVP
+// import {
+//   buildAulaTextoPrompt,
+//   SYSTEM_PROMPT_AVALIACAO,
+//   SYSTEM_PROMPT_MELHORIA,
+//   validateAulaTextoStructure,
+//   QUALITY_CHECKLIST
+// } from './prompts/aulaTexto'; // ARCHIVED
+// import { buildAulaTextoRespondAi } from './prompts/aulaTextoAvancado'; // ARCHIVED
+// import { generateScoringReport } from './evidence-scoring'; // ARCHIVED
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -861,12 +862,9 @@ export async function analyzeLearningGoal(userMessage: string, level?: string, u
     if (uploadedFiles && uploadedFiles.length > 0) {
       console.log('📁 Construindo contexto RAG com arquivos enviados...');
       try {
-        const { buildRAGContextForTopic } = await import('./rag');
-        const ragResult = await buildRAGContextForTopic({
-          topic: subject,
-          level: (level as 'beginner' | 'intermediate' | 'advanced') || 'intermediate',
-          maxWords: 1000
-        }, uploadedFiles);
+        // const { buildRAGContextForTopic } = await import('./rag'); // ARCHIVED
+        // Funcionalidade RAG arquivada para MVP
+        const ragResult = { ragContext: [], sources: [], totalSnippets: 0 };
 
         ragContext = ragResult.ragContext;
         ragSources = ragResult.sources;
@@ -1343,11 +1341,10 @@ async function parseJsonWithRetry(
       const sanitized = sanitizeJsonFromOpenAI(content);
       const parsed = JSON.parse(sanitized);
 
-      // Validar estrutura
-      const validation = validateAulaTextoStructure(parsed);
-      if (!validation.isValid) {
-        throw new Error(`Estrutura inválida: ${validation.errors.join(', ')}`);
-      }
+      // Validação de estrutura arquivada para MVP
+      // const validation = validateAulaTextoStructure(parsed); // ARCHIVED
+      // Assumir estrutura válida para MVP
+      const validation = { isValid: true };
 
       return parsed as AulaTextoStructure;
     } catch (error) {
@@ -1573,14 +1570,8 @@ Avalie seguindo a rubrica especificada e retorne um JSON válido com o formato e
   } catch (error) {
     console.error('❌ Erro ao avaliar qualidade:', error);
 
-    // Fallback com checklist básico
-    const basicChecklist = QUALITY_CHECKLIST.map(item => ({
-      item: item.item,
-      ok: item.check(aulaTexto),
-      comentario: item.check(aulaTexto) ? 'Presente' : 'Ausente'
-    }));
-
-    const basicScore = basicChecklist.filter(item => item.ok).length / basicChecklist.length * 10;
+    // Fallback simplificado para MVP - QUALITY_CHECKLIST foi arquivado
+    const basicScore = 7; // Score padrão para MVP
 
     return {
       score: Math.round(basicScore * 100) / 100,
@@ -1592,10 +1583,7 @@ Avalie seguindo a rubrica especificada e retorne um JSON válido com o formato e
         exercicios: { pontos: 7, comentario: 'Avaliação básica' },
         adequacao: { pontos: 7, comentario: 'Avaliação básica' }
       },
-      checklist: basicChecklist.map(item => ({
-        ...item,
-        ok: Boolean(item.ok)
-      })),
+      checklist: [], // Checklist arquivado para MVP
       feedback: ['Avaliação automática não disponível'],
       needsRewrite: basicScore < 8,
       strengths: ['Conteúdo gerado'],
@@ -2172,9 +2160,9 @@ export async function generateCourseSyllabus(
       avgConfidenceScore: syllabusData.pedagogicalMetadata?.ragMetadata?.avgConfidenceScore || 0
     });
 
-    // Log relatório de evidências para debug
+    // Log relatório de evidências para debug - função generateScoringReport arquivada
     if (ragEvidences.approved.length > 0) {
-      console.log('📋 Relatório de evidências:\n', generateScoringReport(ragEvidences.approved.slice(0, 5)));
+      console.log(`📋 ${ragEvidences.approved.length} evidências aprovadas encontradas`);
     }
 
     // 9. Flagging para revisão humana

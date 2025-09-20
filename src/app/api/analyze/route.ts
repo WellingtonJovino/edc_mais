@@ -10,7 +10,7 @@ import { validateAndImproveFinalStructure, ensureMinimumQualityStandards } from 
 import { runCourseGenerationPipeline } from '@/lib/course-generation-pipeline';
 // Removido: saveLearningPlan e saveCourse não são mais usados na fase de estruturação
 import { generateBookRecommendations, convertToLegacyFormat, generateValidationReport } from '@/lib/ai-book-recommendations';
-import { analyzePriorKnowledge, assessCourseCompatibility, personalizeCourseContent } from '@/lib/knowledge-assessment';
+// import { analyzePriorKnowledge, assessCourseCompatibility, personalizeCourseContent } from '@/lib/knowledge-assessment'; // ARCHIVED
 import { LearningGoal, Topic, TopicValidationResult, FileAnalysisResult, BookSearchResult, ChatMessage } from '@/types';
 
 // Interface para tópicos melhorados durante o processamento
@@ -217,48 +217,10 @@ export async function POST(request: NextRequest) {
       console.log('🔄 Análise de fallback concluída:', analysis.title);
     }
 
-    // NOVA FUNCIONALIDADE: Processar conhecimento prévio do usuário
+    // FUNCIONALIDADE DE PERSONALIZAÇÃO REMOVIDA PARA MVP
+    // Personalização baseada em conhecimento prévio foi arquivada
     if (userProfile?.priorKnowledge && userProfile.priorKnowledge.trim()) {
-      console.log('🧠 Analisando conhecimento prévio do usuário...');
-
-      try {
-        const priorKnowledgeAnalysis = await analyzePriorKnowledge(
-          userProfile.priorKnowledge,
-          analysis.title,
-          analysis.level
-        );
-
-        console.log('✅ Análise de conhecimento prévio concluída:', {
-          hasKnowledge: priorKnowledgeAnalysis.hasSignificantKnowledge,
-          level: priorKnowledgeAnalysis.knowledgeLevel,
-          concepts: priorKnowledgeAnalysis.specificKnowledge.concepts.length,
-          recommendations: priorKnowledgeAnalysis.recommendations.length
-        });
-
-        // Avaliar compatibilidade e personalizar curso
-        const courseAssessment = assessCourseCompatibility(analysis, priorKnowledgeAnalysis);
-
-        if (courseAssessment.skipTopics.length > 0) {
-          console.log(`🎯 Personalizando curso: ${courseAssessment.skipTopics.length} tópicos serão ajustados`);
-          console.log('📋 Tópicos que podem ser pulados:', courseAssessment.skipTopics);
-
-          // Personalizar conteúdo do curso
-          analysis = personalizeCourseContent(analysis, courseAssessment);
-        }
-
-        // Adicionar informações ao resultado
-        analysis.metadata = {
-          ...analysis.metadata,
-          priorKnowledgeAnalysis,
-          courseAssessment,
-          personalizedContent: courseAssessment.skipTopics.length > 0
-        };
-
-        console.log('🎉 Curso personalizado baseado no conhecimento prévio');
-      } catch (knowledgeError) {
-        console.warn('⚠️ Erro na análise de conhecimento prévio:', knowledgeError);
-        // Continuar sem personalização em caso de erro
-      }
+      console.log('ℹ️ Conhecimento prévio informado mas personalização está desabilitada no MVP');
     }
 
     // Determinar se temos arquivos com Assistant para validação inteligente

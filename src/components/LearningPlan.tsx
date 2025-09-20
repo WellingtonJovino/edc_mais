@@ -5,7 +5,7 @@ import { CheckCircle2, Circle, Play, Clock, User, BookOpen, Video, FileText, Ale
 import { LearningGoal, Topic, YouTubeVideo, LearningPlan as LearningPlanType } from '@/types';
 import Image from 'next/image';
 import AcademicContent from './AcademicContent';
-import VideoPlayer from './VideoPlayer';
+// import VideoPlayer from './VideoPlayer'; // ARCHIVED
 import PrerequisitesSection from './PrerequisitesSection';
 
 interface LearningPlanProps {
@@ -491,7 +491,21 @@ function VideoPlayerCard({ video }: VideoPlayerCardProps) {
 
     return (
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <VideoPlayer video={videoPlayerData} />
+        <div className="p-6 text-center bg-gray-50">
+          <Video className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+          <h3 className="text-lg font-medium text-gray-700 mb-2">Player de Vídeo Arquivado</h3>
+          <p className="text-gray-600 mb-4">
+            Funcionalidade de reprodução de vídeos foi arquivada para manter o foco no MVP de estruturação de cursos.
+          </p>
+          <a
+            href={`https://www.youtube.com/watch?v=${video.videoId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Assistir no YouTube
+          </a>
+        </div>
         <div className="p-3 border-t">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4 text-sm text-gray-600">

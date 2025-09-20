@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Play, BookOpen, FileEdit, MessageSquare, CheckCircle2, Clock, Brain, Video, Lock } from 'lucide-react';
 import { Module, Section, Topic } from '@/types';
-import VideoPlayer from './VideoPlayer';
+// import VideoPlayer from './VideoPlayer'; // ARCHIVED
 import AcademicContent from './AcademicContent';
-import EnhancedAulaTexto from './EnhancedAulaTexto';
+// import EnhancedAulaTexto from './EnhancedAulaTexto'; // ARCHIVED
 
 interface HierarchicalCourseViewProps {
   modules: Module[];
@@ -329,30 +329,27 @@ export default function HierarchicalCourseView({
 
             {/* Conteúdo */}
             <div className="flex-1 overflow-y-auto p-6">
-              {selectedContentType === 'aula-texto' && selectedTopic.aulaTexto && (
+              {selectedContentType === 'aula-texto' && (
                 <div className="max-w-4xl mx-auto">
-                  <EnhancedAulaTexto
-                    content={selectedTopic.aulaTexto}
-                    onDoubtClick={(section, content) => onDoubtClick?.(selectedTopic.id, `${section}: ${content}`)}
-                  />
+                  <div className="bg-white rounded-lg p-6 border border-gray-200">
+                    <h3 className="text-xl font-semibold mb-4">Conteúdo da Aula</h3>
+                    <p className="text-gray-600">
+                      Geração automática de aulas-texto foi arquivada para manter o foco no MVP de estruturação de cursos.
+                      O sistema atual gera apenas a estrutura dos cursos (módulos, tópicos, pré-requisitos).
+                    </p>
+                  </div>
                 </div>
               )}
 
-              {selectedContentType === 'video' && selectedTopic.videos && selectedTopic.videos.length > 0 && (
-                <div className="space-y-6">
-                  {selectedTopic.videos.map((video) => (
-                    <div key={video.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                      <VideoPlayer video={{
-                        id: video.id,
-                        title: video.title,
-                        description: video.description,
-                        thumbnail: video.thumbnail,
-                        url: `https://www.youtube.com/watch?v=${video.videoId}`,
-                        duration: video.duration,
-                        channelTitle: video.channelTitle,
-                      }} />
-                    </div>
-                  ))}
+              {selectedContentType === 'video' && (
+                <div className="max-w-4xl mx-auto">
+                  <div className="bg-white rounded-lg p-6 border border-gray-200">
+                    <h3 className="text-xl font-semibold mb-4">Vídeos Educacionais</h3>
+                    <p className="text-gray-600">
+                      Busca automática de vídeos YouTube foi arquivada para manter o foco no MVP de estruturação de cursos.
+                      O sistema atual gera apenas a estrutura dos cursos (módulos, tópicos, pré-requisitos).
+                    </p>
+                  </div>
                 </div>
               )}
 
