@@ -1390,13 +1390,17 @@ async function parseJsonWithRetry(
 }
 
 /**
- * Gera aula-texto seguindo princípios pedagógicos científicos
+ * FUNÇÃO ARQUIVADA - Gera aula-texto seguindo princípios pedagógicos científicos
+ * Arquivada para manter foco no MVP de estruturação de cursos
  */
 export async function generateAulaTexto(config: AulaTextoConfig): Promise<{
   aulaTexto: AulaTextoStructure;
   tokensUsed: number;
   qualityScore?: number;
 }> {
+  // FUNÇÃO ARQUIVADA PARA MVP
+  throw new Error('Função generateAulaTexto foi arquivada. MVP foca apenas em estruturação de cursos.');
+  /*
   console.log(`🎯 Gerando aula-texto RESPONDE AÍ para: "${config.topic}" (nível: ${config.level})`);
 
   // Detectar área baseada no tópico
@@ -1520,15 +1524,35 @@ export async function generateAulaTexto(config: AulaTextoConfig): Promise<{
       qualityScore: 3.0 // Score baixo para fallback
     };
   }
+  */
 }
 
 /**
- * Avalia qualidade da aula-texto usando rubrica científica
+ * FUNÇÃO ARQUIVADA - Avalia qualidade da aula-texto usando rubrica científica
+ * Arquivada para manter foco no MVP de estruturação de cursos
  */
 export async function evaluateAulaTextoQuality(
   aulaTexto: AulaTextoStructure,
   ragContext?: RAGContext[]
 ): Promise<AulaTextoQualityAssessment> {
+  // FUNÇÃO ARQUIVADA PARA MVP - retorna avaliação padrão
+  return {
+    score: 7.5,
+    detalhamento: {
+      clareza: { pontos: 7, comentario: 'Avaliação básica' },
+      completude: { pontos: 7, comentario: 'Avaliação básica' },
+      precisao: { pontos: 7, comentario: 'Avaliação básica' },
+      exemplos: { pontos: 7, comentario: 'Avaliação básica' },
+      exercicios: { pontos: 7, comentario: 'Avaliação básica' },
+      adequacao: { pontos: 7, comentario: 'Avaliação básica' }
+    },
+    checklist: [],
+    feedback: ['Avaliação automática arquivada para MVP'],
+    needsRewrite: false,
+    strengths: ['Estrutura básica presente'],
+    improvementAreas: ['Sistema de avaliação completo será implementado em versão futura']
+  };
+  /*
   console.log('📊 Avaliando qualidade da aula-texto...');
 
   // Preparar contexto para verificação factual
@@ -1590,15 +1614,21 @@ Avalie seguindo a rubrica especificada e retorne um JSON válido com o formato e
       improvementAreas: ['Avaliação detalhada necessária']
     };
   }
+  */
 }
 
 /**
- * Melhora aula-texto baseada em feedback de qualidade
+ * FUNÇÃO ARQUIVADA - Melhora aula-texto baseada em feedback de qualidade
+ * Arquivada para manter foco no MVP de estruturação de cursos
  */
 export async function improveAulaTexto(
   aulaTexto: AulaTextoStructure,
   assessment: AulaTextoQualityAssessment
 ): Promise<AulaTextoStructure> {
+  // FUNÇÃO ARQUIVADA PARA MVP - retorna o texto original
+  console.log('ℹ️ Melhoria automática de aula-texto arquivada para MVP');
+  return aulaTexto;
+  /*
   if (!assessment.needsRewrite) {
     console.log('✅ Aula-texto já tem qualidade satisfatória, não precisa melhoria');
     return aulaTexto;
@@ -1657,10 +1687,12 @@ Retorne o JSON da aula-texto melhorada, mantendo a estrutura original mas aplica
     // Retornar original se melhoria falhar
     return aulaTexto;
   }
+  */
 }
 
 /**
- * Pipeline completo: gera + avalia + melhora se necessário
+ * FUNÇÃO ARQUIVADA - Pipeline completo: gera + avalia + melhora se necessário
+ * Arquivada para manter foco no MVP de estruturação de cursos
  */
 export async function generateHighQualityAulaTexto(
   config: AulaTextoConfig,
@@ -1671,6 +1703,9 @@ export async function generateHighQualityAulaTexto(
   tokensUsed: number;
   improved: boolean;
 }> {
+  // FUNÇÃO ARQUIVADA PARA MVP - retorna estrutura padrão
+  throw new Error('Pipeline de geração de aula-texto foi arquivado. MVP foca apenas em estruturação de cursos.');
+  /*
   console.log('🚀 Iniciando pipeline de geração de aula-texto de alta qualidade...');
 
   // 1. Gerar aula-texto inicial
@@ -1714,6 +1749,7 @@ export async function generateHighQualityAulaTexto(
     tokensUsed: totalTokens,
     improved
   };
+  */
 }
 
 /**
@@ -1964,7 +2000,15 @@ export async function generateCourseSyllabus(
     }
 
     // 2. Análise pedagógica do domínio
-    const pedagogicalAnalysis = analyzePedagogicalStructure(message, userProfile);
+    // const pedagogicalAnalysis = analyzePedagogicalStructure(message, userProfile); // ARCHIVED
+    const pedagogicalAnalysis = {
+      domain: 'general',
+      complexity: 'medium',
+      name: 'Curso Geral',
+      recommendedApproach: 'structured',
+      bloomProgression: ['remember', 'understand', 'apply'],
+      estimatedDuration: '4 weeks'
+    }; // Fallback para MVP
     console.log('📊 Análise pedagógica:', {
       domain: pedagogicalAnalysis.domain.name,
       complexity: pedagogicalAnalysis.complexity,
@@ -1973,7 +2017,13 @@ export async function generateCourseSyllabus(
     });
 
     // 3. Análise detalhada do perfil do usuário
-    const detailedProfile = analyzeUserProfile(userProfile || {});
+    // const detailedProfile = analyzeUserProfile(userProfile || {}); // ARCHIVED
+    const detailedProfile = {
+      learningStyle: 'mixed',
+      experience: 'beginner',
+      constraints: { timePerSession: '1 hour' },
+      learningGoals: { motivation: 'academic' }
+    }; // Fallback para MVP
     console.log('👤 Perfil detalhado:', {
       learningStyle: detailedProfile.learningStyle,
       timePerSession: detailedProfile.constraints.timePerSession,
@@ -1997,13 +2047,19 @@ export async function generateCourseSyllabus(
     }
 
     // 5. Geração de recomendações de personalização
-    const personalizationRecs = generatePersonalizationRecommendations(detailedProfile, pedagogicalAnalysis);
+    // const personalizationRecs = generatePersonalizationRecommendations(detailedProfile, pedagogicalAnalysis); // ARCHIVED
+    const personalizationRecs = {
+      adjustments: [],
+      recommendations: [],
+      contentAdaptations: { difficulty: 'medium', pacing: 'normal' }
+    }; // Fallback para MVP
 
     // 6. Construção do prompt especializado
     const specializedPrompt = buildSpecializedPrompt(pedagogicalAnalysis, message, userProfile);
 
     // 7. Aplicação da personalização ao prompt
-    let finalPrompt = applyPersonalizationToPrompt(specializedPrompt, detailedProfile, personalizationRecs);
+    // let finalPrompt = applyPersonalizationToPrompt(specializedPrompt, detailedProfile, personalizationRecs); // ARCHIVED
+    let finalPrompt = specializedPrompt; // Usar prompt sem personalização para MVP
 
     // 8. Integração do contexto de livros no prompt
     if (bookContext) {
@@ -2191,7 +2247,15 @@ export async function generateCourseSyllabus(
     try {
       // const { analyzePedagogicalStructure, generateTopicStructure } = await import('./pedagogicalEngine'); // ARCHIVED
 
-      const pedagogicalAnalysis = analyzePedagogicalStructure(message, userProfile);
+      // const pedagogicalAnalysis = analyzePedagogicalStructure(message, userProfile); // ARCHIVED
+    const pedagogicalAnalysis = {
+      domain: 'general',
+      complexity: 'medium',
+      name: 'Curso Geral',
+      recommendedApproach: 'structured',
+      bloomProgression: ['remember', 'understand', 'apply'],
+      estimatedDuration: '4 weeks'
+    }; // Fallback para MVP
       const topic = message.substring(0, 50);
 
       console.log('🔄 Gerando fallback pedagógico...');
@@ -2203,7 +2267,13 @@ export async function generateCourseSyllabus(
 
       for (let i = 0; i < moduleCount; i++) {
         const moduleTitle = `Módulo ${i + 1}`;
-        const topicStructure = generateTopicStructure(pedagogicalAnalysis, moduleTitle, i + 1);
+        // const topicStructure = generateTopicStructure(pedagogicalAnalysis, moduleTitle, i + 1); // ARCHIVED
+        const topicStructure = [{
+          id: `topic-${i + 1}-1`,
+          title: `Tópico ${i + 1}.1`,
+          subtopics: [],
+          bloomLevel: 'understand'
+        }]; // Fallback para MVP
 
         modules.push({
           id: `module-${i + 1}`,
