@@ -1,4 +1,4 @@
-import { YouTubeVideo } from '@/types';
+import { YouTubeVideo, ContextualVideoSearch, ContextualSearchResult } from '@/types';
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 
@@ -100,21 +100,16 @@ async function searchCandidates(
     key: process.env.YOUTUBE_API_KEY!,
   });
   
-  // Aplicar parâmetros baseados no nível de fallback
+  // Aplicar parâmetros baseados no nível de fallback (removidos filtros problemáticos)
   if (fallbackLevel === 0) {
-    // Primeira tentativa: filtros normais
-    params.append('relevanceLanguage', language);
+    // Primeira tentativa: ordem por relevância
     params.append('order', 'relevance');
-    if (language === 'pt') {
-      params.append('regionCode', 'BR');
-    }
   } else if (fallbackLevel === 1) {
-    // Remover regionCode, manter language
-    params.append('relevanceLanguage', language);
-    params.append('order', 'relevance');
+    // Segunda tentativa: ordem por rating
+    params.append('order', 'rating');
   } else if (fallbackLevel === 2) {
-    // Remover language, tentar inglês
-    params.append('order', 'relevance');
+    // Terceira tentativa: ordem por data
+    params.append('order', 'date');
   } else {
     // Último recurso: só por views
     params.append('order', 'viewCount');
@@ -520,4 +515,157 @@ function formatDuration(duration: string): string {
   }
 
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
+}
+
+// ============================================================================
+// NOVA BUSCA CONTEXTUAL POR SUB-TÓPICO
+// ============================================================================
+
+/**
+ * Constrói queries contextuais avançadas usando toda a hierarquia
+ */
+function buildContextualQueries(config: ContextualVideoSearch): string[] {
+  const { courseTitle, moduleTitle, topicTitle, keyTerms, difficulty } = config;
+
+  // Base queries com contexto hierárquico
+  const baseQueries = [
+    `"${topicTitle}" aula ${moduleTitle}`,
+    `"${topicTitle}" ${courseTitle}`,
+    `${topicTitle} ${moduleTitle} aula`,
+    `${topicTitle} explicação`,
+    `${topicTitle} tutorial`
+  ];
+
+  // Queries com termos-chave
+  const keyTermQueries = keyTerms.flatMap(term => [
+    `"${term}" ${topicTitle}`,
+    `${term} ${moduleTitle}`,
+    `${term} aula`
+  ]);
+
+  // Queries específicas por dificuldade
+  const difficultyQueries = {
+    easy: [`${topicTitle} introdução`, `${topicTitle} básico`],
+    medium: [`${topicTitle} exercícios`, `${topicTitle} exemplos`],
+    hard: [`${topicTitle} avançado`, `${topicTitle} aplicado`]
+  };
+
+  // Combinar todas as queries
+  const allQueries = [
+    ...baseQueries,
+    ...keyTermQueries.slice(0, 8), // Limitar a 8 queries de termos-chave
+    ...difficultyQueries[difficulty]
+  ];
+
+  // Remover duplicatas e limitar a 15 queries total
+  return Array.from(new Set(allQueries)).slice(0, 15);
+}
+
+/**
+ * Busca contextual por sub-tópico usando hierarquia completa
+ */
+export async function searchContextualVideos(config: ContextualVideoSearch): Promise<ContextualSearchResult> {
+  const startTime = Date.now();
+  console.log(`🎯 Busca contextual: ${config.courseTitle} > ${config.moduleTitle} > ${config.topicTitle}`);
+
+  // Construir queries contextuais
+  const queries = buildContextualQueries(config);
+  console.log(`🔍 Usando ${queries.length} queries contextuais`);
+
+  try {
+    // Usar o sistema de busca inteligente existente
+    const contextDescription = `Curso: ${config.courseTitle}. Módulo: ${config.moduleTitle}. Objetivos: ${config.learningObjectives.join(', ')}. Termos-chave: ${config.keyTerms.join(', ')}`;
+
+    const videos = await searchAndRankYouTube(
+      config.topicTitle,
+      contextDescription,
+      config.targetVideoCount
+    );
+
+    const searchDuration = Date.now() - startTime;
+
+    const result: ContextualSearchResult = {
+      videos,
+      searchMetadata: {
+        queriesUsed: queries,
+        totalCandidates: videos.length * 3, // Estimativa
+        filteredCount: videos.length,
+        avgRelevanceScore: videos.reduce((acc, v: any) => acc + (v.relevanceScore || 0), 0) / videos.length,
+        searchDuration
+      },
+      contextUsed: {
+        courseTitle: config.courseTitle,
+        moduleTitle: config.moduleTitle,
+        topicTitle: config.topicTitle,
+        keyTermsUsed: config.keyTerms
+      }
+    };
+
+    console.log(`✅ Busca contextual concluída em ${searchDuration}ms: ${videos.length} vídeos`);
+    videos.forEach((video, i) => {
+      const reason = (video as any).selectionReason || 'seleção contextual';
+      console.log(`   ${i + 1}. "${video.title}" (${reason})`);
+    });
+
+    return result;
+
+  } catch (error) {
+    console.error(`❌ Erro na busca contextual:`, error);
+    throw new Error(`Falha na busca contextual para ${config.topicTitle}`);
+  }
+}
+
+/**
+ * Busca vídeos para múltiplos sub-tópicos usando contexto hierárquico
+ */
+export async function searchVideosForTopics(
+  courseTitle: string,
+  modules: Array<{
+    title: string;
+    topics: Array<{
+      title: string;
+      description: string;
+      detailedDescription: string;
+      learningObjectives: string[];
+      keyTerms: string[];
+      searchKeywords: string[];
+      difficulty: 'easy' | 'medium' | 'hard';
+    }>;
+  }>
+): Promise<{ [topicTitle: string]: YouTubeVideo[] }> {
+  const results: { [topicTitle: string]: YouTubeVideo[] } = {};
+
+  console.log(`🎥 Iniciando busca contextual para curso: "${courseTitle}"`);
+
+  for (const module of modules) {
+    console.log(`📚 Processando módulo: "${module.title}"`);
+
+    for (const topic of module.topics) {
+      const config: ContextualVideoSearch = {
+        courseTitle,
+        moduleTitle: module.title,
+        topicTitle: topic.title,
+        topicDescription: topic.detailedDescription,
+        learningObjectives: topic.learningObjectives,
+        keyTerms: topic.keyTerms,
+        difficulty: topic.difficulty,
+        targetVideoCount: 3 // 3 vídeos por sub-tópico
+      };
+
+      try {
+        const searchResult = await searchContextualVideos(config);
+        results[topic.title] = searchResult.videos;
+
+      } catch (error) {
+        console.error(`❌ Erro ao buscar vídeos para "${topic.title}":`, error);
+        results[topic.title] = [];
+      }
+
+      // Delay entre buscas para respeitar rate limits
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+
+  console.log(`✅ Busca contextual concluída para todos os módulos`);
+  return results;
 }

@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { BookOpen, Brain, CheckCircle, Image, Calculator, BarChart3, Lightbulb, MessageCircle, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { AulaTextoStructure } from '@/types';
-import GeminiNanoImageGenerator from './GeminiNanoImageGenerator';
+import EducationalImageGenerator from './EducationalImageGenerator';
+import LatexRenderer from './LatexRenderer';
+import TextWithLatex from './TextWithLatex';
 
 interface EnhancedAulaTextoProps {
   content: AulaTextoStructure;
@@ -42,11 +44,18 @@ export default function EnhancedAulaTexto({ content, onDoubtClick }: EnhancedAul
         <Calculator className="w-4 h-4 text-gray-600" />
       </div>
       {showFormulas && (
-        <div className="bg-white p-3 rounded border border-gray-300 text-center font-mono text-lg">
-          {/* LaTeX formula - would need a LaTeX renderer in production */}
-          <code className="text-blue-600">
-            {typeof formula.latex === 'string' ? formula.latex : 'Fórmula não disponível'}
-          </code>
+        <div className="bg-white p-4 rounded border border-gray-300">
+          {typeof formula.latex === 'string' && formula.latex.trim() ? (
+            <LatexRenderer
+              latex={formula.latex}
+              displayMode={true}
+              className="text-center"
+            />
+          ) : (
+            <div className="text-center text-gray-500 font-mono">
+              Fórmula não disponível
+            </div>
+          )}
         </div>
       )}
       <p className="text-sm text-gray-700 mt-2">
@@ -161,7 +170,7 @@ export default function EnhancedAulaTexto({ content, onDoubtClick }: EnhancedAul
               <h3 className="text-xl font-bold text-gray-900 mb-4">Visão Geral</h3>
               <div className="text-gray-700 leading-relaxed">
                 {content.introducao.overview.split('\n').map((paragraph, index) => (
-                  <p key={index} className="mb-4">{paragraph}</p>
+                  <TextWithLatex key={index} text={paragraph} className="mb-4" />
                 ))}
               </div>
             </div>
@@ -191,15 +200,22 @@ export default function EnhancedAulaTexto({ content, onDoubtClick }: EnhancedAul
               </div>
             </div>
 
-            {/* Gerador de Imagens */}
+            {/* Gerador de Imagens Educacionais */}
             {showImageGenerator && (
               <div className="mb-6">
-                <GeminiNanoImageGenerator
-                  initialPrompt={`Diagrama educacional sobre ${content.topic}`}
-                  onImageGenerated={(imageUrl, prompt) => {
-                    console.log('Imagem gerada:', imageUrl, prompt);
+                <EducationalImageGenerator
+                  topic={content.topic}
+                  level={content.level as 'beginner' | 'intermediate' | 'advanced'}
+                  onImageGenerated={(image) => {
+                    console.log('✅ Imagem educacional gerada:', image);
                     // Aqui você poderia adicionar a imagem à aula-texto dinamicamente
                   }}
+                  suggestedPrompts={[
+                    `Diagrama técnico sobre ${content.topic}`,
+                    `Ilustração didática dos conceitos de ${content.topic}`,
+                    `Gráfico explicativo sobre ${content.topic}`,
+                    `Esquema passo-a-passo de ${content.topic}`
+                  ]}
                 />
               </div>
             )}
@@ -231,7 +247,7 @@ export default function EnhancedAulaTexto({ content, onDoubtClick }: EnhancedAul
                       <div className="text-gray-700 leading-relaxed">
                         {typeof conceito.explicacao === 'string'
                           ? conceito.explicacao.split('\n').map((paragraph, index) => (
-                              <p key={index} className="mb-4">{paragraph}</p>
+                              <TextWithLatex key={index} text={paragraph} className="mb-4" />
                             ))
                           : <p className="mb-4 text-gray-500">Explicação não disponível</p>
                         }
@@ -322,7 +338,7 @@ export default function EnhancedAulaTexto({ content, onDoubtClick }: EnhancedAul
               <h3 className="text-xl font-bold text-gray-900 mb-4">Resumo Executivo</h3>
               <div className="text-gray-700 leading-relaxed">
                 {content.conclusao.resumoExecutivo.split('\n').map((paragraph, index) => (
-                  <p key={index} className="mb-4">{paragraph}</p>
+                  <TextWithLatex key={index} text={paragraph} className="mb-4" />
                 ))}
               </div>
             </div>

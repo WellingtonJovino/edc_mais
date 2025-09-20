@@ -55,17 +55,17 @@ export async function POST(request: NextRequest) {
         id: `academic-${Date.now()}`,
         topicId: topicId,
         introduction: result.aulaTexto.introducao.overview,
-        lecture: result.aulaTexto.desenvolvimento.explicacao,
+        lecture: result.aulaTexto.desenvolvimento.conceitos.map(c => c.explicacao).join('\n'),
         keyConcepts: result.aulaTexto.desenvolvimento.conceitos,
-        workedExamples: result.aulaTexto.desenvolvimento.exemplosResolvidos || [],
-        practicalExamples: result.aulaTexto.desenvolvimento.exemplos || [],
-        commonMisunderstandings: result.aulaTexto.desenvolvimento.errosComuns || [],
+        workedExamples: result.aulaTexto.desenvolvimento.conceitos.flatMap(c => c.exemplos) || [],
+        practicalExamples: result.aulaTexto.desenvolvimento.conceitos.flatMap(c => c.exemplos) || [],
+        commonMisunderstandings: [],
         exercises: result.aulaTexto.verificacao.exercicios,
         glossary: result.aulaTexto.verificacao.perguntasReflexao.map(p => ({
           term: `Questão ${result.aulaTexto.verificacao.perguntasReflexao.indexOf(p) + 1}`,
           definition: p
         })),
-        references: result.aulaTexto.referencias.fontes,
+        references: result.aulaTexto.referencias || [],
         summary: result.aulaTexto.conclusao.resumoExecutivo,
         created_at: new Date().toISOString(),
       };

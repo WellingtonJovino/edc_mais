@@ -14,7 +14,12 @@
       "WebSearch",
       "Bash(npm install:*)",
       "Bash(curl:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(psql:*)",
+      "Bash(copy:*)",
+      "Bash(cat:*)",
+      "Bash(node:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

@@ -22,7 +22,7 @@ export default function LearningPlan({ plan, onTopicComplete, progress }: Learni
   const { goal } = plan;
   
   // Verificar quantos dos primeiros 5 tópicos foram completados
-  const first5Topics = goal.topics.slice(0, 5);
+  const first5Topics = goal.topics?.slice(0, 5) || [];
   const completedFirst5 = first5Topics.filter(t => t.completed).length;
   const canAccessRestrictedTopics = completedFirst5 >= 5;
 
@@ -215,7 +215,7 @@ export default function LearningPlan({ plan, onTopicComplete, progress }: Learni
 
       {/* Topics */}
       <div className="space-y-4">
-        {goal.topics
+        {(goal.topics || [])
           .sort((a, b) => a.order - b.order)
           .map((topic) => (
             <TopicCard
