@@ -1,4 +1,4 @@
-import { PerplexityResponse, AcademicContent, AcademicReference, WorkedExample, GlossaryItem, ExerciseItem } from '@/types';
+import { PerplexityResponse, AcademicContent, AcademicReference, WorkedExample, GlossaryItem, ExerciseItem, RecommendedBibliography } from '@/types';
 import OpenAI from 'openai';
 
 // Cliente OpenAI para fallback
@@ -10,8 +10,43 @@ const openai = new OpenAI({
  * Sanitiza texto JSON removendo caracteres de controle e cercas de código
  */
 function sanitizeToJson(text: string): string {
-  // Remove cercas de código markdown
-  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+  console.log('🔍 ANTES da sanitização (100 chars):', text.substring(0, 100));
+
+  // Remove cercas de código markdown mais agressivamente
+  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').replace(/^```/g, '').replace(/```$/g, '');
+
+  // Remove BOM e espaços iniciais/finais
+  text = text.replace(/^\uFEFF/, '').trim();
+
+  // CORREÇÃO CRÍTICA: Remove padrão problemático {\n no início
+  if (text.startsWith('{\n')) {
+    text = '{' + text.substring(2);
+  }
+
+  // SUPER AGRESSIVO: Remove TODOS os escapes problemáticos na entrada
+  text = text.replace(/\\bn\\b/g, '').replace(/\\b/g, '').replace(/\b/g, '');
+
+  // NOVO: Remove caracteres problemáticos específicos de forma ultra-agressiva
+  // Remove TODOS os backslashes seguidos de qualquer letra (exceto escapes válidos JSON)
+  text = text.replace(/\\b/g, '');     // Remove \b (backspace)
+  text = text.replace(/\\n/g, ' ');    // Replace \n com espaço por enquanto
+  text = text.replace(/\\t/g, ' ');    // Replace \t com espaço
+  text = text.replace(/\\r/g, '');     // Remove \r
+  text = text.replace(/\\f/g, '');     // Remove \f
+  text = text.replace(/\\v/g, '');     // Remove \v
+
+  // Remove caracteres de controle ASCII e Unicode mais agressivamente
+  text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
+
+  // Remove caracteres problemáticos literais
+  text = text.replace(/\b/g, '');      // Backspace literal
+  text = text.replace(/\f/g, '');      // Form feed literal
+  text = text.replace(/\v/g, '');      // Vertical tab literal
+  text = text.replace(/\0/g, '');      // Null character
+
+  // Remove padrões específicos problemáticos vistos nos logs
+  text = text.replace(/\\+b/g, '');    // Remove múltiplos \b
+  text = text.replace(/\\+n\\+b/g, ''); // Remove \n\b patterns
 
   // Encontra o primeiro { e último } para extrair apenas o JSON
   const firstBrace = text.indexOf('{');
@@ -23,8 +58,20 @@ function sanitizeToJson(text: string): string {
 
   text = text.substring(firstBrace, lastBrace + 1);
 
-  // Remove caracteres de controle problemáticos
+  // Remove caracteres de controle problemáticos (Unicode)
   text = text.replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F\u007f-\u009f]/g, ' ');
+
+  // CORREÇÃO: Não adicionar backslashes desnecessários - deixar quebras reais como espaços
+  text = text
+    .replace(/\n/g, ' ')               // Converter quebras reais para espaços
+    .replace(/\r/g, ' ')               // Converter carriage returns para espaços
+    .replace(/\t/g, ' ')               // Converter tabs para espaços
+    .replace(/\s+/g, ' ');             // Normalizar múltiplos espaços
+
+  // Normalizar aspas inteligentes para aspas normais
+  text = text
+    .replace(/[""]/g, '"')             // Smart quotes para aspas normais
+    .replace(/['']/g, "'");            // Smart quotes para aspas simples
 
   // Fix strings quebradas (substitui aspas não fechadas por aspas duplas)
   text = text.replace(/"\s*\n\s*"/g, ' ');
@@ -44,13 +91,29 @@ function sanitizeToJson(text: string): string {
  * Parser JSON seguro com sanitização
  */
 function safeJsonParse(raw: string): any {
+  let clean = '';
   try {
-    const clean = sanitizeToJson(raw);
+    // Debug: verificar se há padrões problemáticos específicos
+    if (raw.includes('\\bn\\b') || raw.includes('\\b')) {
+      console.warn('⚠️ Detectados caracteres problemáticos na resposta:', raw.substring(0, 100));
+    }
+
+    clean = sanitizeToJson(raw);
     console.log('🔧 JSON sanitizado:', clean.substring(0, 200) + '...');
+
+    // Validação adicional: verificar se ainda há padrões problemáticos
+    if (clean.includes('\\b') && !clean.includes('\\"')) {
+      console.warn('⚠️ Ainda há caracteres problemáticos após sanitização');
+      // Tentar uma limpeza extra para este caso específico
+      const extraClean = clean.replace(/\\b/g, '').replace(/\b/g, '');
+      return JSON.parse(extraClean);
+    }
+
     return JSON.parse(clean);
   } catch (e) {
-    console.error('❌ Erro no parsing JSON:', e);
+    console.error('❌ ERRO CRÍTICO no parsing JSON após todas as tentativas:', e);
     console.error('📄 Texto original (primeiros 500 chars):', raw.substring(0, 500));
+    console.error('🔧 Texto sanitizado (primeiros 500 chars):', clean ? clean.substring(0, 500) : 'undefined');
     throw new Error(`JSON parsing falhou: ${e instanceof Error ? e.message : 'Erro desconhecido'}`);
   }
 }
@@ -88,13 +151,16 @@ export interface PerplexitySearchParams {
   query: string;
   model?: string;
   language?: string;
+  maxResults?: number;
+  siteFilters?: string[];
 }
 
-export async function searchRequiredTopics(subject: string, level: string): Promise<string[]> {
+export async function searchRequiredTopics(subject: string, level: string, customPrompt?: string): Promise<string[]> {
   console.log('🔍 Perplexity - Buscando tópicos necessários para:', subject, 'nível:', level);
+  console.log('📝 Prompt customizado:', customPrompt ? 'Sim (GPT-generated)' : 'Não (usando padrão)');
 
-  const searchQuery = `Liste todos os tópicos fundamentais e necessários para aprender "${subject}" desde o nível ${level === 'beginner' ? 'iniciante até avançado' : level}. 
-  Organize os tópicos em uma progressão lógica de aprendizado, do mais básico ao mais avançado. 
+  const searchQuery = customPrompt || `Liste todos os tópicos fundamentais e necessários para aprender "${subject}" desde o nível ${level === 'beginner' ? 'iniciante até avançado' : level}.
+  Organize os tópicos em uma progressão lógica de aprendizado, do mais básico ao mais avançado.
   Responda APENAS com uma lista numerada dos tópicos, sem explicações adicionais.
   Exemplo de formato:
   1. Conceitos básicos
@@ -103,12 +169,18 @@ export async function searchRequiredTopics(subject: string, level: string): Prom
   ...`;
 
   try {
+    const apiKey = process.env.PERPLEXITY_API_KEY;
+    if (!apiKey) {
+      console.error('❌ PERPLEXITY_API_KEY não configurada');
+      throw new Error('API Key do Perplexity não configurada. Verifique suas variáveis de ambiente.');
+    }
+
     console.log('🌐 Fazendo requisição para buscar tópicos necessários...');
     const response = await fetch(PERPLEXITY_API_BASE, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: 'sonar-pro',
@@ -147,29 +219,60 @@ export async function searchRequiredTopics(subject: string, level: string): Prom
   }
 }
 
+/**
+ * Constrói query robusta com filtros educacionais
+ */
+function buildRobustQuery(originalQuery: string, language: string = 'pt', siteFilters?: string[]): string {
+  const academicSites = [
+    'site:edu.br', 'site:.edu', 'site:scholar.google.com',
+    'site:researchgate.net', 'site:arxiv.org', 'site:pubmed.ncbi.nlm.nih.gov'
+  ];
+
+  const pdfFilter = 'filetype:pdf';
+  const sites = siteFilters || academicSites;
+
+  if (language === 'pt') {
+    return `Pesquise conteúdos acadêmicos detalhados sobre "${originalQuery}" em português e inglês. ` +
+           `Inclua artigos científicos, papers, livros acadêmicos, ementas universitárias e materiais ` +
+           `de universidades reconhecidas. Busque em: ${sites.join(' OR ')} OR ${pdfFilter}. ` +
+           `Priorize fontes de alta qualidade acadêmica com autoridade reconhecida.`;
+  } else {
+    return `Search for detailed academic content about "${originalQuery}". ` +
+           `Include scientific articles, research papers, academic books, university syllabi ` +
+           `and materials from recognized institutions. Search in: ${sites.join(' OR ')} OR ${pdfFilter}. ` +
+           `Prioritize high-quality academic sources with recognized authority.`;
+  }
+}
+
 export async function searchAcademicContent(params: PerplexitySearchParams): Promise<PerplexityResponse> {
   const {
     query,
     model = 'sonar-pro',
-    language = 'pt'
+    language = 'pt',
+    maxResults = 15,
+    siteFilters
   } = params;
 
   console.log('🔍 Perplexity - Iniciando busca para:', query);
   console.log('🔑 API Key configurada:', !!process.env.PERPLEXITY_API_KEY);
 
-  const searchQuery = language === 'pt' 
-    ? `Pesquise conteúdos acadêmicos sobre "${query}" em português e inglês. Inclua artigos científicos, papers, livros acadêmicos e materiais de universidades reconhecidas.`
-    : `Search for academic content about "${query}". Include scientific articles, research papers, academic books, and materials from recognized universities.`;
+  const searchQuery = buildRobustQuery(query, language, siteFilters);
 
   console.log('📝 Query preparada:', searchQuery);
 
   try {
+    const apiKey = process.env.PERPLEXITY_API_KEY;
+    if (!apiKey) {
+      console.error('❌ PERPLEXITY_API_KEY não configurada');
+      throw new Error('API Key do Perplexity não configurada. Verifique suas variáveis de ambiente.');
+    }
+
     console.log('🌐 Fazendo requisição para Perplexity...');
     const response = await fetch(PERPLEXITY_API_BASE, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model,
@@ -183,7 +286,7 @@ export async function searchAcademicContent(params: PerplexitySearchParams): Pro
             content: searchQuery
           }
         ],
-        max_tokens: 2000,
+        max_tokens: Math.min(4000, Math.max(2000, maxResults * 200)),
         temperature: 0.2,
       }),
     });
@@ -222,8 +325,9 @@ export async function generateAcademicSummary(
 Tópico: "${topic}"
 Conteúdo de referência: ${perplexityResponse.answer}
 
-Gere **apenas** um JSON válido UTF-8 (sem \`\`\`, sem comentários), com o seguinte schema:
+IMPORTANTE: Gere **apenas** um JSON válido UTF-8. Não use cercas de código (\`\`\`), não adicione comentários, não use caracteres de controle.
 
+Schema obrigatório:
 {
   "introduction": "2-4 parágrafos: contexto, por que é importante, quando usar",
   "lecture": "AULA COMPLETA: narrativa contínua, com derivação e exemplos intercalados; use \\\\( ... \\\\) e \\\\[ ... \\\\] para fórmulas",
@@ -244,20 +348,30 @@ Gere **apenas** um JSON válido UTF-8 (sem \`\`\`, sem comentários), com o segu
   "summary": "1-2 parágrafos: o que lembrar"
 }
 
-Regras:
-- Mantenha JSON válido (sem quebras de linha ilegais, sem barras invertidas extras).
-- Priorize rigor e didática, mas seja conciso onde possível.
-- Para referências, use apenas as do conteúdo fornecido.
+REGRAS CRÍTICAS:
+- RESPONDA APENAS COM O JSON (iniciando com { e terminando com })
+- NÃO use caracteres de controle (\\b, \\f, \\v)
+- NÃO use cercas de código markdown
+- NÃO adicione texto antes ou depois do JSON
+- Escape quebras de linha como \\n nas strings
+- Use apenas aspas duplas (") para strings
+- Para referências, use apenas as do conteúdo fornecido
 `;
 
   try {
     console.log('🎯 Gerando aula completa para:', topic);
-    
+
+    const apiKey = process.env.PERPLEXITY_API_KEY;
+    if (!apiKey) {
+      console.warn('⚠️ PERPLEXITY_API_KEY não configurada, usando fallback');
+      throw new Error('API Key não disponível');
+    }
+
     const response = await fetch(PERPLEXITY_API_BASE, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: 'sonar-pro',
@@ -339,8 +453,13 @@ Regras:
       keyConcepts: [`Conceitos fundamentais de ${topic}`],
       workedExamples: [{
         title: `Exemplo de ${topic}`,
-        statement: 'Exemplo não disponível no momento',
-        solution: 'Solução não disponível no momento'
+        statement: 'Enunciado não disponível no momento',
+        problem: 'Exemplo não disponível no momento',
+        solution: 'Solução não disponível no momento',
+        keySteps: ['Passo 1: Análise do problema', 'Passo 2: Solução'],
+        chapter: 1,
+        page: 1,
+        relatedTopics: [topic]
       }],
       practicalExamples: [`Exemplo prático de ${topic}`],
       commonMisunderstandings: [`Erros comuns em ${topic}`],
@@ -363,12 +482,22 @@ function extractCitationsFromResponse(content: string) {
   // Extrai URLs e títulos do conteúdo da resposta
   const urlRegex = /https?:\/\/[^\s\)]+/g;
   const urls = content.match(urlRegex) || [];
-  
-  return urls.map((url, index) => ({
-    title: `Referência ${index + 1}`,
-    url,
-    snippet: extractSnippetAroundUrl(content, url)
-  }));
+
+  return urls.map((url, index) => {
+    const snippet = extractSnippetAroundUrl(content, url);
+    const title = extractTitleFromSnippet(snippet) || `Referência ${index + 1}`;
+
+    return {
+      title,
+      url,
+      snippet,
+      // Metadados para scoring
+      type: determineSourceType(url),
+      authority_score: calculateAuthorityScore(url),
+      domain: extractDomainFromUrl(url),
+      estimated_year: extractYearFromUrl(url) || new Date().getFullYear()
+    };
+  });
 }
 
 function extractSnippetAroundUrl(content: string, url: string) {
@@ -413,20 +542,120 @@ function extractYearFromUrl(url: string): number | null {
 function determineReferenceType(url: string, title: string): 'article' | 'paper' | 'book' | 'website' {
   const lowerUrl = url.toLowerCase();
   const lowerTitle = title.toLowerCase();
-  
+
   if (lowerUrl.includes('doi.org') || lowerUrl.includes('pubmed') || lowerUrl.includes('arxiv')) {
     return 'paper';
   }
-  
+
   if (lowerUrl.includes('scholar.google') || lowerTitle.includes('journal') || lowerTitle.includes('article')) {
     return 'article';
   }
-  
+
   if (lowerTitle.includes('book') || lowerTitle.includes('livro')) {
     return 'book';
   }
-  
+
   return 'website';
+}
+
+/**
+ * Determina o tipo de fonte para scoring
+ */
+function determineSourceType(url: string): 'academic_paper' | 'university' | 'educational' | 'commercial' | 'other' {
+  const lowerUrl = url.toLowerCase();
+
+  if (lowerUrl.includes('doi.org') || lowerUrl.includes('pubmed') || lowerUrl.includes('arxiv') ||
+      lowerUrl.includes('researchgate') || lowerUrl.includes('scholar.google')) {
+    return 'academic_paper';
+  }
+
+  if (lowerUrl.includes('.edu') || lowerUrl.includes('edu.br') || lowerUrl.includes('university') ||
+      lowerUrl.includes('universidade') || lowerUrl.includes('usp.br') || lowerUrl.includes('unicamp.br')) {
+    return 'university';
+  }
+
+  if (lowerUrl.includes('coursera') || lowerUrl.includes('edx') || lowerUrl.includes('khan') ||
+      lowerUrl.includes('mit.edu') || lowerUrl.includes('stanford.edu')) {
+    return 'educational';
+  }
+
+  if (lowerUrl.includes('.com') || lowerUrl.includes('.org')) {
+    return 'commercial';
+  }
+
+  return 'other';
+}
+
+/**
+ * Calcula score de autoridade baseado na URL
+ */
+function calculateAuthorityScore(url: string): number {
+  const lowerUrl = url.toLowerCase();
+
+  // Fontes de alta autoridade (0.8-1.0)
+  if (lowerUrl.includes('mit.edu') || lowerUrl.includes('stanford.edu') ||
+      lowerUrl.includes('harvard.edu') || lowerUrl.includes('usp.br') ||
+      lowerUrl.includes('unicamp.br')) {
+    return 0.95;
+  }
+
+  // Papers acadêmicos (0.7-0.9)
+  if (lowerUrl.includes('doi.org') || lowerUrl.includes('pubmed') ||
+      lowerUrl.includes('arxiv') || lowerUrl.includes('researchgate')) {
+    return 0.85;
+  }
+
+  // Universidades em geral (0.6-0.8)
+  if (lowerUrl.includes('.edu') || lowerUrl.includes('edu.br')) {
+    return 0.75;
+  }
+
+  // Plataformas educacionais (0.5-0.7)
+  if (lowerUrl.includes('coursera') || lowerUrl.includes('edx') ||
+      lowerUrl.includes('khan') || lowerUrl.includes('scholar.google')) {
+    return 0.65;
+  }
+
+  // Sites comerciais educacionais (0.3-0.5)
+  if (lowerUrl.includes('.org') || lowerUrl.includes('wikipedia')) {
+    return 0.45;
+  }
+
+  // Outros sites (0.1-0.3)
+  return 0.25;
+}
+
+/**
+ * Extrai domínio da URL
+ */
+function extractDomainFromUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.hostname;
+  } catch {
+    return url.split('/')[2] || 'unknown';
+  }
+}
+
+/**
+ * Extrai título do snippet quando possível
+ */
+function extractTitleFromSnippet(snippet: string): string | null {
+  // Procura por padrões de título no snippet
+  const titlePatterns = [
+    /"([^"]{10,100})"/,  // Texto entre aspas
+    /^([^.!?]{10,100})[.!?]/,  // Primeira sentença
+    /([A-Z][^\n]{10,100})/  // Texto que começa com maiúscula
+  ];
+
+  for (const pattern of titlePatterns) {
+    const match = snippet.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return null;
 }
 
 function extractTopicsFromResponse(content: string): string[] {
@@ -451,7 +680,7 @@ function extractTopicsFromResponse(content: string): string[] {
     .map(line => line.replace(/^\s*[\d\-\*]\s*/, '').trim())
     .filter(line => line.length > 0 && !line.match(/^(resposta|exemplo|formato)/i));
   
-  return topics.slice(0, 15); // Limita a 15 tópicos
+  return topics; // Retorna TODOS os tópicos sem limites
 }
 
 export interface TopicValidationResult {
@@ -801,4 +1030,398 @@ Seja preciso na análise e identifique lacunas e oportunidades.`;
       extraInFiles: []
     };
   }
+}
+
+/**
+ * Busca bibliografia recomendada para uma matéria específica
+ */
+export async function searchRecommendedBooks(
+  courseName: string,
+  educationLevel: 'high_school' | 'undergraduate' | 'graduate' | 'professional',
+  country = 'Brasil'
+): Promise<import('@/types').RecommendedBibliography> {
+  console.log(`📚 Buscando bibliografia para: ${courseName} (${educationLevel})`);
+
+  try {
+    // Construir query específica para bibliografia acadêmica
+    const query = buildBibliographyQuery(courseName, educationLevel, country);
+
+    // Buscar no Perplexity com foco em fontes acadêmicas
+    const response = await searchAcademicContent({
+      query,
+      maxResults: 10,
+      language: 'pt',
+      siteFilters: [
+        'site:usp.br',
+        'site:unicamp.br',
+        'site:ufrj.br',
+        'site:ufmg.br',
+        'site:puc-rio.br',
+        'site:ufsc.br',
+        'site:ufrgs.br',
+        'site:.edu.br',
+        'filetype:pdf "bibliografia" OR "ementa" OR "plano de ensino"',
+        'filetype:pdf "livro texto" OR "manual" OR "referência"'
+      ]
+    });
+
+    // Processar resposta para extrair livros estruturados
+    const books = await extractBooksFromResponse(response.answer, courseName, educationLevel);
+
+    return {
+      courseName,
+      educationLevel,
+      country,
+      searchDate: new Date().toISOString(),
+      books,
+      searchSources: response.citations.map(c => c.url),
+      confidence: calculateBibliographyConfidence(books, response.citations.length)
+    };
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar bibliografia:', error);
+
+    // Retornar bibliografia vazia em caso de erro
+    return {
+      courseName,
+      educationLevel,
+      country,
+      searchDate: new Date().toISOString(),
+      books: [],
+      searchSources: [],
+      confidence: 0
+    };
+  }
+}
+
+/**
+ * Constrói query otimizada para busca de bibliografia
+ */
+function buildBibliographyQuery(
+  courseName: string,
+  educationLevel: string,
+  country: string
+): string {
+  const levelTerms = {
+    'high_school': 'ensino médio',
+    'undergraduate': 'graduação faculdade universidade',
+    'graduate': 'pós-graduação mestrado doutorado',
+    'professional': 'técnico profissionalizante'
+  };
+
+  const levelTerm = levelTerms[educationLevel as keyof typeof levelTerms] || 'graduação';
+
+  const baseQuery = `
+    Quais são os livros-texto e referências bibliográficas mais utilizados para ensinar "${courseName}"
+    em cursos de ${levelTerm} no ${country}?
+
+    Inclua informações sobre:
+    1. Livros clássicos e tradicionais da área
+    2. Livros modernos mais adotados atualmente
+    3. Autores brasileiros ou portugueses relevantes
+    4. Edições específicas recomendadas
+    5. ISBN quando disponível
+    6. Editoras e anos de publicação
+    7. Classificação como bibliografia básica, complementar ou de apoio
+    8. Universidades que adotam cada livro
+    9. Por que cada livro é recomendado (características principais)
+
+    Foque em fontes oficiais como ementas de universidades públicas brasileiras,
+    planos de ensino de professores reconhecidos, e documentos curriculares oficiais.
+  `;
+
+  return baseQuery.trim();
+}
+
+/**
+ * Extrai livros estruturados da resposta do Perplexity
+ */
+async function extractBooksFromResponse(
+  response: string,
+  courseName: string,
+  educationLevel: string
+): Promise<import('@/types').RecommendedBibliography['books']> {
+  console.log('📖 Extraindo livros da resposta do Perplexity...');
+
+  try {
+    // Usar OpenAI para estruturar a resposta em formato JSON
+    const structuredResponse = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [
+        {
+          role: 'system',
+          content: `Você é um especialista em bibliografia acadêmica. Analise a resposta sobre livros-texto e extraia informações estruturadas em JSON.`
+        },
+        {
+          role: 'user',
+          content: `
+            Analise esta resposta sobre bibliografia para "${courseName}" (${educationLevel}) e extraia informações sobre livros em formato JSON.
+
+            Resposta a analisar:
+            ${response}
+
+            IMPORTANTE: Gere APENAS um JSON válido, sem cercas de código ou comentários.
+
+            Schema:
+            {
+              "books": [
+                {
+                  "title": "título completo do livro",
+                  "author": "autor(es) completo(s)",
+                  "isbn": "ISBN se mencionado",
+                  "year": ano de publicação (número),
+                  "publisher": "editora",
+                  "edition": "edição específica",
+                  "category": "primary" | "secondary" | "supplementary" | "reference",
+                  "adoptionRate": "high" | "medium" | "low",
+                  "universities": ["lista de universidades que adotam"],
+                  "description": "breve descrição do livro",
+                  "reasons": ["motivos pelos quais é recomendado"]
+                }
+              ]
+            }
+
+            Categorias:
+            - primary: Bibliografia básica/obrigatória
+            - secondary: Bibliografia complementar
+            - supplementary: Material de apoio
+            - reference: Obra de referência/consulta
+
+            AdoptionRate baseado na frequência mencionada:
+            - high: Muito citado, usado em várias universidades
+            - medium: Moderadamente citado
+            - low: Pouco citado mas relevante
+          `
+        }
+      ],
+      max_tokens: 2000,
+      temperature: 0.1
+    });
+
+    const jsonResponse = structuredResponse.choices[0].message.content?.trim() || '{"books": []}';
+    const cleanJson = sanitizeToJson(jsonResponse);
+
+    const parsedData = JSON.parse(cleanJson);
+
+    console.log(`✅ Extraídos ${parsedData.books?.length || 0} livros da bibliografia`);
+
+    return parsedData.books || [];
+
+  } catch (error) {
+    console.error('❌ Erro ao extrair livros:', error);
+    return [];
+  }
+}
+
+/**
+ * Calcula confiança da bibliografia baseada na qualidade das fontes
+ */
+function calculateBibliographyConfidence(
+  books: any[],
+  citationCount: number
+): number {
+  if (books.length === 0) return 0;
+
+  let confidence = 50; // Base
+
+  // Mais livros = mais confiança
+  confidence += Math.min(books.length * 5, 30);
+
+  // Mais citações = mais confiança
+  confidence += Math.min(citationCount * 3, 20);
+
+  // Livros com ISBN = mais confiança
+  const booksWithIsbn = books.filter(b => b.isbn).length;
+  confidence += (booksWithIsbn / books.length) * 10;
+
+  // Livros de categoria primary = mais confiança
+  const primaryBooks = books.filter(b => b.category === 'primary').length;
+  confidence += (primaryBooks / books.length) * 10;
+
+  return Math.min(Math.round(confidence), 100);
+}
+
+/**
+ * Busca bibliografia universitária usando Perplexity
+ */
+export async function searchUniversityBibliography(
+  courseName: string,
+  educationLevel: 'high_school' | 'undergraduate' | 'graduate' | 'professional'
+): Promise<RecommendedBibliography> {
+  try {
+    console.log(`📚 Buscando bibliografia universitária para "${courseName}" (${educationLevel})`);
+
+    // Mapear nível educacional para termos de busca
+    const levelTerms = {
+      high_school: 'ensino médio vestibular',
+      undergraduate: 'graduação universidade',
+      graduate: 'pós-graduação mestrado doutorado',
+      professional: 'técnico profissionalizante'
+    };
+
+    // Query focada em ementas e bibliografias oficiais
+    const query = `bibliografia ementa syllabus "${courseName}" ${levelTerms[educationLevel]} site:edu.br OR site:.edu OR filetype:pdf`;
+
+    const searchOptions = {
+      query,
+      language: 'pt' as const
+    };
+
+    console.log(`🔍 Query Perplexity: "${query}"`);
+
+    // Buscar usando Perplexity
+    const perplexityResponse = await searchAcademicContent(searchOptions);
+
+    // Extrair livros das citações e texto
+    const extractedBooks = extractBooksFromPerplexityResponse(perplexityResponse, courseName);
+
+    // Enriquecer com informações adicionais
+    const enrichedBooks = await enrichBookInformation(extractedBooks);
+
+    const bibliography: RecommendedBibliography = {
+      courseName,
+      educationLevel,
+      country: 'Brasil',
+      searchDate: new Date().toISOString(),
+      books: enrichedBooks,
+      searchSources: perplexityResponse.citations?.map(c => c.url) || [],
+      confidence: calculateBibliographyConfidence(enrichedBooks, perplexityResponse.citations?.length || 0)
+    };
+
+    console.log(`✅ Perplexity encontrou ${bibliography.books.length} livros com confiança ${bibliography.confidence}%`);
+    bibliography.books.forEach((book, index) => {
+      console.log(`   ${index + 1}. ${book.title} - ${book.author} (${book.adoptionRate})`);
+    });
+
+    return bibliography;
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar bibliografia universitária:', error);
+
+    // Retornar resultado vazio em caso de erro
+    return {
+      courseName,
+      educationLevel,
+      country: 'Brasil',
+      searchDate: new Date().toISOString(),
+      books: [],
+      searchSources: [],
+      confidence: 0
+    };
+  }
+}
+
+/**
+ * Extrai informações de livros da resposta do Perplexity
+ */
+function extractBooksFromPerplexityResponse(
+  response: PerplexityResponse,
+  courseName: string
+): RecommendedBibliography['books'] {
+  const books: RecommendedBibliography['books'] = [];
+  const text = response.answer;
+
+  // Padrões para extrair livros
+  const bookPatterns = [
+    // "Título" por Autor (Ano)
+    /"([^"]+)"\s*(?:de|por|by)\s*([^(]+)\s*\((\d{4})\)/gi,
+    // Título - Autor, Editora, Ano
+    /([A-Z][^-\n]+)\s*-\s*([^,\n]+),\s*([^,\n]+),\s*(\d{4})/gi,
+    // AUTOR, Nome. Título. Editora, Ano.
+    /([A-Z][A-Z\s,]+)\.\s*([^.]+)\.\s*([^,]+),\s*(\d{4})/gi
+  ];
+
+  for (const pattern of bookPatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const book = parseBookMatch(match, courseName);
+      if (book && !books.some(b => b.title === book.title)) {
+        books.push(book);
+      }
+    }
+  }
+
+  // Se não encontrou livros específicos, tentar extração mais geral
+  if (books.length === 0) {
+    const generalBooks = extractGeneralBookReferences(text, courseName);
+    books.push(...generalBooks);
+  }
+
+  return books; // Retorna TODOS os livros sem limites
+}
+
+/**
+ * Parseia um match de livro extraído
+ */
+function parseBookMatch(match: RegExpMatchArray, courseName: string): RecommendedBibliography['books'][0] | null {
+  try {
+    const [, title, author, yearOrPublisher, year] = match;
+
+    return {
+      title: title.trim(),
+      author: author.trim(),
+      year: parseInt(year || yearOrPublisher) || undefined,
+      publisher: year ? yearOrPublisher?.trim() : undefined,
+      category: 'primary' as const,
+      adoptionRate: 'medium' as const,
+      universities: [],
+      reasons: [`Encontrado em bibliografia de ${courseName}`],
+      description: `Livro referenciado em materiais acadêmicos de ${courseName}`
+    };
+  } catch (error) {
+    console.warn('⚠️ Erro ao parsear livro:', error);
+    return null;
+  }
+}
+
+/**
+ * Extração geral de referências de livros quando padrões específicos falham
+ */
+function extractGeneralBookReferences(text: string, courseName: string): RecommendedBibliography['books'] {
+  const books: RecommendedBibliography['books'] = [];
+
+  // Palavras-chave que indicam livros acadêmicos
+  const academicKeywords = ['livro', 'textbook', 'manual', 'handbook', 'principles', 'introduction', 'fundamentos'];
+
+  const sentences = text.split(/[.!?]/);
+
+  for (const sentence of sentences) {
+    const hasAcademicKeyword = academicKeywords.some(keyword =>
+      sentence.toLowerCase().includes(keyword)
+    );
+
+    if (hasAcademicKeyword && sentence.length > 20 && sentence.length < 200) {
+      // Tentar extrair título e autor de forma heurística
+      const cleanSentence = sentence.trim();
+      if (cleanSentence.includes(' - ') || cleanSentence.includes(' por ') || cleanSentence.includes(' de ')) {
+        books.push({
+          title: cleanSentence.substring(0, Math.min(100, cleanSentence.length)),
+          author: 'Autor não identificado',
+          category: 'secondary' as const,
+          adoptionRate: 'low' as const,
+          universities: [],
+          reasons: [`Mencionado em contexto de ${courseName}`],
+          description: `Referência extraída: ${cleanSentence}`
+        });
+      }
+    }
+  }
+
+  return books; // Retorna TODAS as referências sem limites
+}
+
+/**
+ * Enriquece informações dos livros com dados adicionais
+ */
+async function enrichBookInformation(
+  books: RecommendedBibliography['books']
+): Promise<RecommendedBibliography['books']> {
+  // Por enquanto, retorna os livros como estão
+  // Em uma implementação futura, poderia buscar ISBNs, editoras, etc.
+  return books.map(book => ({
+    ...book,
+    adoptionRate: book.title.toLowerCase().includes('introdução') ||
+                  book.title.toLowerCase().includes('fundamentos') ? 'high' as const :
+                  book.adoptionRate
+  }));
 }

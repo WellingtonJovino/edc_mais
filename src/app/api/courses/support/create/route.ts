@@ -54,9 +54,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       id: `support-topic-${Date.now()}-${index}`,
       title: topicTitle,
       description: `Conceitos fundamentais sobre ${topicTitle} necessários para prosseguir no curso principal.`,
+      detailedDescription: `Conceitos fundamentais sobre ${topicTitle} necessários para prosseguir no curso principal.`,
       order: index + 1,
       videos: [],
+      aulaTexto: {} as any,
       completed: false,
+      estimatedDuration: '30 min',
+      contentType: 'mixed' as const,
+      hasDoubtButton: true,
+      difficulty: 'easy' as const,
       learningObjectives: [
         `Compreender os conceitos básicos de ${topicTitle}`,
         `Aplicar conhecimentos de ${topicTitle} em exercícios simples`,
@@ -76,7 +82,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           `Curso introdutório de ${topic.title}`,
           2 // 2 vídeos por tópico para curso de apoio
         );
-        topic.videos = videos;
+        (topic as any).videos = videos;
         console.log(`✅ ${videos.length} vídeos encontrados para: ${topic.title}`);
       } catch (error) {
         console.error(`❌ Erro ao buscar vídeos para ${topic.title}:`, error);
@@ -89,6 +95,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       title: supportCourse.title,
       description: supportCourse.description,
       level: supportCourse.difficulty,
+      modules: [], // Curso de apoio usa estrutura simples
       topics: structuredTopics,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -112,14 +119,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // 6. Salvar o curso de apoio
     console.log('💾 Salvando curso de apoio...');
-    const savedCourse = await saveCourse({
+    const learningPlan = {
+      id: `support-plan-${Date.now()}`,
       goal,
       messages: [userMessage, assistantMessage],
       progress: 0,
+      created_at: new Date().toISOString(),
       uploadedFiles: [],
-      supportCourseFor: parentCourseId, // Indica que é curso de apoio
-      isSupport: true
-    });
+      // supportCourseFor: parentCourseId, // Indica que é curso de apoio - campo removido por tipo
+      // isSupport: true // campo removido por tipo
+    };
+
+    const savedCourse = await saveCourse(learningPlan);
 
     console.log(`✅ Curso de apoio criado com sucesso: ${savedCourse.id}`);
 

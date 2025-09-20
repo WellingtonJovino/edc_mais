@@ -53,6 +53,62 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Função utilitária para retry de operações
+async function retryOperation<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  delayMs: number = 1000
+): Promise<T> {
+  let lastError: Error;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error as Error;
+      console.warn(`❌ Tentativa ${attempt}/${maxRetries} falhou:`, error);
+
+      // Não tentar novamente para alguns tipos de erro
+      if (error instanceof Error) {
+        if (error.message.includes('duplicate key') ||
+            error.message.includes('foreign key') ||
+            error.message.includes('permission')) {
+          throw error; // Erros que não se resolvem com retry
+        }
+      }
+
+      if (attempt < maxRetries) {
+        console.log(`⏳ Aguardando ${delayMs}ms antes da próxima tentativa...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        delayMs *= 1.5; // Backoff exponencial
+      }
+    }
+  }
+
+  throw lastError!;
+}
+
+export async function createCourseFromSyllabus(courseData: any): Promise<Course | null> {
+  try {
+    const { data, error } = await supabase
+      .from('courses')
+      .insert([courseData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Erro ao criar curso:', error);
+      throw error;
+    }
+
+    console.log('✅ Curso criado no Supabase:', data.id);
+    return data;
+  } catch (error) {
+    console.error('❌ Erro na função createCourseFromSyllabus:', error);
+    return null;
+  }
+}
+
 export async function saveLearningPlan(plan: Omit<LearningPlan, 'id' | 'created_at'>): Promise<LearningPlan> {
   const { data, error } = await supabase
     .from('learning_plans')
@@ -134,9 +190,9 @@ export async function updateTopicProgress(planId: string, topicId: string, compl
 
   const updatedGoal = {
     ...plan.goal,
-    topics: plan.goal.topics.map(topic =>
+    topics: plan.goal.topics?.map(topic =>
       topic.id === topicId ? { ...topic, completed } : topic
-    ),
+    ) || [],
   };
 
   const completedTopics = updatedGoal.topics.filter(t => t.completed).length;
@@ -153,57 +209,154 @@ export async function updateTopicProgress(planId: string, topicId: string, compl
 
 export async function saveCourse(learningPlan: LearningPlan): Promise<Course> {
   try {
-    // Criar o curso principal
+    console.log('📊 Dados do curso a serem salvos:', {
+      title: learningPlan.goal.title,
+      level: learningPlan.goal.level,
+      hasModules: !!learningPlan.goal.modules,
+      modulesCount: learningPlan.goal.modules?.length || 0,
+      topicsCount: learningPlan.goal.topics?.length || 0
+    });
+
+    // Calcular total de tópicos (incluindo todos os módulos)
+    const totalTopics = learningPlan.goal.modules?.reduce((total, module) =>
+      total + (module.topics?.length || 0), 0) || learningPlan.goal.topics?.length || 0;
+
+    // Criar o curso principal - evitar usar palavras-chave que podem ser ambíguas
     const courseData = {
       title: learningPlan.goal.title,
       description: learningPlan.goal.description,
       level: learningPlan.goal.level,
       subject: learningPlan.goal.title,
-      progress: learningPlan.progress,
-      total_topics: learningPlan.goal.topics.length,
+      progress: learningPlan.progress || 0,
+      total_topics: totalTopics,
     };
 
-    const { data: course, error: courseError } = await supabase
-      .from('courses')
-      .insert([courseData])
-      .select()
-      .single();
+    console.log('💾 Inserindo curso na tabela courses...');
+    const course = await retryOperation(async () => {
+      const { data, error } = await supabase
+        .from('courses')
+        .insert(courseData)
+        .select('*')
+        .single();
 
-    if (courseError) throw courseError;
+      if (error) {
+        console.error('❌ Erro ao inserir curso:', error);
+        console.error('📊 Dados que falharam:', courseData);
+        throw new Error(`Erro no banco: ${error.message} (código: ${error.code})`);
+      }
 
-    // Salvar tópicos
-    const topicsData = learningPlan.goal.topics.map((topic: Topic, index: number) => ({
-      course_id: course.id,
-      title: topic.title,
-      description: topic.description,
-      order_index: topic.order || index,
-      completed: topic.completed,
-      academic_content: topic.academicContent,
-      videos: topic.videos || []
-    }));
+      return data;
+    });
 
-    const { error: topicsError } = await supabase
-      .from('course_topics')
-      .insert(topicsData);
+    console.log('✅ Curso inserido com ID:', course.id);
 
-    if (topicsError) throw topicsError;
+    // Primeiro, salvar módulos se existirem
+    const moduleIdMap: { [title: string]: string } = {};
+
+    // MÓDULOS DESABILITADOS: Não salvar módulos no banco por enquanto
+    // A estrutura hierárquica funcionará apenas através dos tópicos com module_title
+    if (learningPlan.goal.modules && learningPlan.goal.modules.length > 0) {
+      console.log(`⚠️ Módulos detectados (${learningPlan.goal.modules.length}), mas inserção está desabilitada`);
+      console.log('📝 Os módulos serão representados através dos tópicos com module_title');
+      console.log('🔧 Para habilitar, corrija primeiro o erro de ambiguidade na coluna total_topics');
+    }
+
+    // Agora salvar tópicos (nova estrutura hierárquica ou antiga)
+    const topicsData: any[] = [];
+    let globalOrder = 0;
+
+    if (learningPlan.goal.modules && learningPlan.goal.modules.length > 0) {
+      // Nova estrutura hierárquica
+      learningPlan.goal.modules.forEach((module, moduleIndex) => {
+        if (module.topics) {
+          module.topics.forEach((topic: Topic, topicIndex) => {
+            topicsData.push({
+              course_id: course.id,
+              module_id: moduleIdMap[module.title] || null,
+              title: topic.title,
+              description: topic.description,
+              detailed_description: topic.detailedDescription || topic.description,
+              module_title: module.title,
+              module_description: module.description,
+              module_order: moduleIndex,
+              order_index: globalOrder++,
+              completed: topic.completed || false,
+              academic_content: topic.academicContent,
+              videos: topic.videos || [],
+              aula_texto: topic.aulaTexto || {},
+              learning_objectives: topic.learningObjectives || [],
+              key_terms: topic.keyTerms || [],
+              search_keywords: topic.searchKeywords || [topic.title],
+              difficulty: topic.difficulty || 'medium',
+              estimated_duration: topic.estimatedDuration || '45 min',
+              has_doubt_button: topic.hasDoubtButton !== false,
+              content_type: topic.contentType || 'mixed'
+            });
+          });
+        }
+      });
+    } else if (learningPlan.goal.topics && learningPlan.goal.topics.length > 0) {
+      // Estrutura antiga (compatibilidade)
+      topicsData.push(...learningPlan.goal.topics.map((topic: Topic, index: number) => ({
+        course_id: course.id,
+        module_id: null,
+        title: topic.title,
+        description: topic.description,
+        detailed_description: topic.detailedDescription || topic.description,
+        order_index: index,
+        completed: topic.completed || false,
+        academic_content: topic.academicContent,
+        videos: topic.videos || [],
+        aula_texto: topic.aulaTexto || {},
+        learning_objectives: topic.learningObjectives || [],
+        key_terms: topic.keyTerms || [],
+        search_keywords: topic.searchKeywords || [topic.title],
+        difficulty: topic.difficulty || 'medium',
+        estimated_duration: topic.estimatedDuration || '45 min',
+        has_doubt_button: topic.hasDoubtButton !== false,
+        content_type: topic.contentType || 'mixed'
+      })));
+    }
+
+    if (topicsData.length > 0) {
+      console.log(`📝 Inserindo ${topicsData.length} tópicos...`);
+      const { error: topicsError } = await supabase
+        .from('course_topics')
+        .insert(topicsData);
+
+      if (topicsError) {
+        console.error('❌ Erro ao inserir tópicos:', topicsError);
+        throw new Error(`Erro ao salvar tópicos: ${topicsError.message}`);
+      }
+      console.log('✅ Tópicos inseridos com sucesso');
+    } else {
+      console.warn('⚠️ Nenhum tópico para inserir');
+    }
 
     // Salvar mensagens
-    const messagesData = learningPlan.messages.map((message: ChatMessage) => ({
-      course_id: course.id,
-      role: message.role,
-      content: message.content,
-      timestamp: message.timestamp
-    }));
+    if (learningPlan.messages && learningPlan.messages.length > 0) {
+      console.log(`💬 Inserindo ${learningPlan.messages.length} mensagens...`);
+      const messagesData = learningPlan.messages.map((message: ChatMessage) => ({
+        course_id: course.id,
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp
+      }));
 
-    const { error: messagesError } = await supabase
-      .from('course_messages')
-      .insert(messagesData);
+      const { error: messagesError } = await supabase
+        .from('course_messages')
+        .insert(messagesData);
 
-    if (messagesError) throw messagesError;
+      if (messagesError) {
+        console.error('❌ Erro ao inserir mensagens:', messagesError);
+        throw new Error(`Erro ao salvar mensagens: ${messagesError.message}`);
+      }
+      console.log('✅ Mensagens inseridas com sucesso');
+    }
 
     // Salvar arquivos se existirem
     if (learningPlan.uploadedFiles && learningPlan.uploadedFiles.length > 0) {
+      console.log(`📁 Inserindo ${learningPlan.uploadedFiles.length} arquivos...`);
       const filesData = learningPlan.uploadedFiles.map((file: UploadedFile) => ({
         course_id: course.id,
         name: file.name,
@@ -217,13 +370,32 @@ export async function saveCourse(learningPlan: LearningPlan): Promise<Course> {
         .from('course_files')
         .insert(filesData);
 
-      if (filesError) throw filesError;
+      if (filesError) {
+        console.error('❌ Erro ao inserir arquivos:', filesError);
+        throw new Error(`Erro ao salvar arquivos: ${filesError.message}`);
+      }
+      console.log('✅ Arquivos inseridos com sucesso');
     }
 
+    console.log('🎉 Curso salvo completamente com ID:', course.id);
     return course;
   } catch (error) {
     console.error('Erro ao salvar curso:', error);
-    throw new Error('Falha ao salvar curso no banco de dados');
+
+    // Tratar erros específicos do Supabase
+    if (error instanceof Error) {
+      if (error.message.includes('duplicate key')) {
+        throw new Error('Já existe um curso com este nome. Escolha um nome diferente.');
+      }
+      if (error.message.includes('foreign key')) {
+        throw new Error('Erro de referência no banco de dados. Verifique os dados enviados.');
+      }
+      if (error.message.includes('connection')) {
+        throw new Error('Erro de conectividade com o banco de dados. Tente novamente.');
+      }
+    }
+
+    throw new Error(`Falha ao salvar curso no banco de dados: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
   }
 }
 
@@ -312,48 +484,120 @@ export async function getCourse(id: string): Promise<Course | null> {
 
 export async function updateCourseProgress(courseId: string, topicId: string, completed: boolean): Promise<void> {
   try {
-    // Atualizar o tópico
+    // Primeiro atualizar o tópico
     const { error: topicError } = await supabase
       .from('course_topics')
-      .update({ completed })
-      .eq('id', topicId);
+      .update({
+        completed,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', topicId)
+      .eq('course_id', courseId);
 
     if (topicError) throw topicError;
 
-    // Recalcular progresso do curso
-    const { data: topics, error: topicsError } = await supabase
+    // Depois calcular e atualizar o progresso do curso
+    const { data: topics, error: countError } = await supabase
       .from('course_topics')
       .select('completed')
       .eq('course_id', courseId);
 
-    if (topicsError) throw topicsError;
+    if (countError) throw countError;
 
-    const completedCount = topics.filter(t => t.completed).length;
-    const totalTopics = topics.length;
-    const progress = totalTopics > 0 ? Math.round((completedCount / totalTopics) * 100) : 0;
+    const totalTopics = topics?.length || 0;
+    const completedTopics = topics?.filter(t => t.completed).length || 0;
+    const progress = totalTopics > 0 ? Math.round((completedTopics / totalTopics) * 100) : 0;
 
-    const { error: courseError } = await supabase
+    const { error: progressError } = await supabase
       .from('courses')
-      .update({ progress })
+      .update({
+        progress: progress,
+        total_topics: totalTopics,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', courseId);
 
-    if (courseError) throw courseError;
+    if (progressError) throw progressError;
   } catch (error) {
     console.error('Erro ao atualizar progresso do curso:', error);
-    throw new Error('Falha ao atualizar progresso do curso');
+    throw new Error(`Falha ao atualizar progresso do curso: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
   }
 }
 
 export async function deleteCourse(id: string): Promise<void> {
   try {
-    const { error } = await supabase
+    console.log('🗑️ Iniciando deleção do curso:', id);
+
+    // Primeiro buscar os tópicos para pegar os IDs
+    const { data: topicIds, error: topicIdsError } = await supabase
+      .from('course_topics')
+      .select('id')
+      .eq('course_id', id);
+
+    if (topicIdsError) {
+      console.warn('⚠️ Erro ao buscar tópicos para deleção:', topicIdsError);
+    } else if (topicIds && topicIds.length > 0) {
+      // Deletar pesquisas contextuais relacionadas aos tópicos
+      const { error: contextualError } = await supabase
+        .from('course_contextual_searches')
+        .delete()
+        .in('topic_id', topicIds.map(t => t.id));
+
+      if (contextualError) {
+        console.warn('⚠️ Erro ao deletar pesquisas contextuais:', contextualError);
+      }
+    }
+
+    // Deletar tabelas relacionadas (ignorar erros se tabelas não existirem)
+    const deletePromises = [
+      // Arquivos do curso
+      supabase.from('course_files').delete().eq('course_id', id),
+      // Mensagens do curso
+      supabase.from('course_messages').delete().eq('course_id', id),
+      // Pré-requisitos
+      supabase.from('course_prerequisites').delete().eq('course_id', id),
+      // Cursos de apoio
+      supabase.from('course_support_courses').delete().eq('course_id', id),
+      // Validações
+      supabase.from('course_validations').delete().eq('course_id', id),
+      // Módulos (se existirem)
+      supabase.from('course_modules').delete().eq('course_id', id),
+    ];
+
+    const results = await Promise.allSettled(deletePromises);
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.warn(`⚠️ Erro ao deletar tabela ${index}:`, result.reason);
+      }
+    });
+
+    // Deletar tópicos
+    console.log('📝 Deletando tópicos...');
+    const { error: topicsError } = await supabase
+      .from('course_topics')
+      .delete()
+      .eq('course_id', id);
+
+    if (topicsError) {
+      console.error('❌ Erro ao deletar tópicos:', topicsError);
+      throw new Error(`Erro ao deletar tópicos: ${topicsError.message}`);
+    }
+
+    // Finalmente deletar o curso
+    console.log('🏁 Deletando curso principal...');
+    const { error: courseError } = await supabase
       .from('courses')
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (courseError) {
+      console.error('❌ Erro ao deletar curso:', courseError);
+      throw new Error(`Erro ao deletar curso: ${courseError.message}`);
+    }
+
+    console.log('✅ Curso deletado com sucesso:', id);
   } catch (error) {
-    console.error('Erro ao deletar curso:', error);
-    throw new Error('Falha ao deletar curso');
+    console.error('❌ Erro geral ao deletar curso:', error);
+    throw new Error(`Falha ao deletar curso: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
   }
 }

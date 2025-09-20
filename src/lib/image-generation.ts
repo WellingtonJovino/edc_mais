@@ -35,7 +35,11 @@ export async function generateImageWithDallE(request: ImageGenerationRequest): P
       n: 1,
     });
 
-    const imageData = response.data[0];
+    const imageData = response.data?.[0];
+
+    if (!imageData || !response.data) {
+      throw new Error('Nenhuma imagem foi gerada');
+    }
 
     return {
       success: true,

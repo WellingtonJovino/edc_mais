@@ -146,7 +146,78 @@ QUALIDADE TEXTUAL:
 - Cite fontes quando usar informações específicas
 
 FORMATO DE SAÍDA:
-Retorne um JSON válido seguindo exatamente a estrutura AulaTextoStructure fornecida.`;
+Retorne APENAS um JSON válido seguindo exatamente esta estrutura:
+
+{
+  "topic": "string",
+  "level": "beginner" | "intermediate" | "advanced",
+  "metadata": {
+    "generatedAt": "ISO date string",
+    "sources": ["fonte1", "fonte2"]
+  },
+  "introducao": {
+    "objetivos": ["objetivo1", "objetivo2"],
+    "preRequisitos": ["pre1", "pre2"],
+    "tempoEstimado": "string",
+    "overview": "string"
+  },
+  "desenvolvimento": {
+    "conceitos": [{
+      "titulo": "string",
+      "definicao": "string",
+      "explicacao": "string",
+      "exemplos": [{
+        "titulo": "string",
+        "descricao": "string",
+        "solucao": "string (opcional)"
+      }],
+      "analogias": ["analogia1", "analogia2"],
+      "figuras": [{
+        "descricao": "string",
+        "imagePrompt": "string",
+        "tipo": "diagrama" | "grafico" | "ilustracao" | "esquema" | "foto",
+        "posicao": "inicio" | "meio" | "fim",
+        "tamanho": "pequeno" | "medio" | "grande",
+        "legenda": "string"
+      }],
+      "formulas": [{
+        "nome": "string",
+        "latex": "string",
+        "explicacao": "string",
+        "aplicacao": "string"
+      }],
+      "graficos": [{
+        "titulo": "string",
+        "tipo": "linha" | "barra" | "pizza" | "dispersao" | "funcao",
+        "descricao": "string",
+        "imagePrompt": "string"
+      }]
+    }]
+  },
+  "conclusao": {
+    "resumoExecutivo": "string",
+    "pontosChave": ["ponto1", "ponto2"],
+    "conexoesFuturas": ["conexao1", "conexao2"]
+  },
+  "verificacao": {
+    "perguntasReflexao": ["pergunta1", "pergunta2"],
+    "exercicios": [{
+      "pergunta": "string",
+      "dificuldade": "facil" | "medio" | "dificil",
+      "gabarito": "string",
+      "explicacao": "string"
+    }],
+    "autoavaliacao": ["item1", "item2"]
+  },
+  "referencias": [{
+    "titulo": "string",
+    "tipo": "documento" | "video" | "artigo" | "site",
+    "url": "string (opcional)",
+    "citacao": "string (opcional)"
+  }]
+}
+
+RETORNE APENAS O JSON, SEM COMENTÁRIOS OU TEXTO ADICIONAL.`;
 
 /**
  * Templates Personalizados por Nível

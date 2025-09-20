@@ -23,9 +23,10 @@ export default function HierarchicalCourseView({
   onDoubtClick
 }: HierarchicalCourseViewProps) {
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  // Removido expandedSections - nova estrutura sem seções
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [selectedContentType, setSelectedContentType] = useState<'video' | 'aula-texto' | 'exercise'>('aula-texto');
+  const [loadingContent, setLoadingContent] = useState<string | null>(null);
 
   const toggleModule = (moduleId: string) => {
     const newExpanded = new Set(expandedModules);
@@ -37,25 +38,55 @@ export default function HierarchicalCourseView({
     setExpandedModules(newExpanded);
   };
 
-  const toggleSection = (sectionId: string) => {
-    const newExpanded = new Set(expandedSections);
-    if (newExpanded.has(sectionId)) {
-      newExpanded.delete(sectionId);
-    } else {
-      newExpanded.add(sectionId);
+  // Função removida: nova estrutura sem seções
+
+  // Carregar conteúdo dinâmico do tópico
+  const loadTopicContent = async (topicId: string) => {
+    if (!selectedTopic || selectedTopic.id !== topicId) return;
+
+    setLoadingContent(topicId);
+    try {
+      // Carregar aula-texto se não existir
+      if (!selectedTopic.aulaTexto || Object.keys(selectedTopic.aulaTexto).length === 0) {
+        const response = await fetch('/api/load-topic-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topicId: selectedTopic.id,
+            topicTitle: selectedTopic.title,
+            courseId
+          })
+        });
+
+        if (response.ok) {
+          const contentData = await response.json();
+          // Atualizar o tópico com o conteúdo carregado
+          setSelectedTopic({
+            ...selectedTopic,
+            aulaTexto: contentData.aulaTexto,
+            videos: contentData.videos || selectedTopic.videos
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar conteúdo do tópico:', error);
+    } finally {
+      setLoadingContent(null);
     }
-    setExpandedSections(newExpanded);
   };
 
-  const selectTopic = (topic: Topic) => {
+  const selectTopic = async (topic: Topic) => {
     setSelectedTopic(topic);
-    // Definir tipo de conteúdo padrão baseado no que está disponível
-    if (topic.aulaTexto) {
+
+    // Definir tipo de conteúdo padrão
+    if (topic.aulaTexto && Object.keys(topic.aulaTexto).length > 0) {
       setSelectedContentType('aula-texto');
     } else if (topic.videos && topic.videos.length > 0) {
       setSelectedContentType('video');
     } else {
       setSelectedContentType('aula-texto');
+      // Carregar conteúdo automaticamente se não existir
+      await loadTopicContent(topic.id);
     }
   };
 
@@ -115,97 +146,95 @@ export default function HierarchicalCourseView({
                 </div>
               </button>
 
-              {/* Seções */}
+              {/* Tópicos diretos do módulo (nova estrutura) */}
               {expandedModules.has(module.id) && (
                 <div className="ml-4 mt-2 space-y-1">
-                  {module.sections.map((section) => (
-                    <div key={section.id}>
+                  {/* Usar module.topics diretamente (nova estrutura) ou fallback para seções */}
+                  {(module.topics || []).length > 0 ? (
+                    // Nova estrutura: tópicos diretos
+                    module.topics.map((topic) => (
                       <button
-                        onClick={() => toggleSection(section.id)}
-                        className="w-full flex items-center justify-between p-2 rounded-md hover:bg-gray-50 text-left"
+                        key={topic.id}
+                        onClick={() => selectTopic(topic)}
+                        className={`w-full flex items-center justify-between p-2 rounded-md text-left transition-colors ${
+                          selectedTopic?.id === topic.id
+                            ? 'bg-blue-100 border border-blue-300'
+                            : 'hover:bg-gray-50 border border-transparent'
+                        }`}
                       >
                         <div className="flex items-center space-x-2">
-                          {expandedSections.has(section.id) ? (
-                            <ChevronDown className="w-3 h-3 text-gray-400" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3 text-gray-400" />
-                          )}
-                          <div>
-                            <h4 className="font-medium text-sm text-gray-800">
-                              {section.title}
-                            </h4>
-                            <p className="text-xs text-gray-500">
-                              {section.topics.length} tópicos
-                            </p>
+                          {getContentIcon(topic.contentType)}
+                          <div className="flex-1 min-w-0">
+                            <h5 className="font-medium text-sm text-gray-900 truncate">
+                              {topic.title}
+                            </h5>
+                            <div className="flex items-center space-x-2 mt-1">
+                              <span className="text-xs text-gray-500">
+                                {topic.estimatedDuration}
+                              </span>
+                              {topic.difficulty && (
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  topic.difficulty === 'easy' ? 'bg-green-100 text-green-700' :
+                                  topic.difficulty === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-red-100 text-red-700'
+                                }`}>
+                                  {topic.difficulty === 'easy' ? 'Fácil' :
+                                   topic.difficulty === 'medium' ? 'Médio' : 'Difícil'}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        {section.completed && (
-                          <CheckCircle2 className="w-3 h-3 text-green-600" />
-                        )}
+                        <div className="flex items-center space-x-1">
+                          {loadingContent === topic.id && (
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                          )}
+                          {topic.completed && (
+                            <CheckCircle2 className="w-3 h-3 text-green-600" />
+                          )}
+                        </div>
                       </button>
-
-                      {/* Tópicos */}
-                      {expandedSections.has(section.id) && (
-                        <div className="ml-4 mt-1 space-y-1">
+                    ))
+                  ) : (
+                    // Fallback: estrutura legada com seções (para compatibilidade)
+                    module.sections?.map((section) => (
+                      <div key={section.id} className="mb-1">
+                        <div className="p-2 bg-gray-50 rounded-md">
+                          <h4 className="font-medium text-sm text-gray-800">
+                            {section.title}
+                          </h4>
+                        </div>
+                        <div className="ml-2 mt-1 space-y-1">
                           {section.topics.map((topic) => (
                             <button
                               key={topic.id}
                               onClick={() => selectTopic(topic)}
-                              className={`w-full flex items-center justify-between p-2 rounded-md text-left hover:bg-blue-50 ${
-                                selectedTopic?.id === topic.id ? 'bg-blue-100 border border-blue-200' : ''
+                              className={`w-full flex items-center justify-between p-2 rounded-md text-left transition-colors ${
+                                selectedTopic?.id === topic.id
+                                  ? 'bg-blue-100 border border-blue-300'
+                                  : 'hover:bg-gray-50 border border-transparent'
                               }`}
                             >
                               <div className="flex items-center space-x-2">
                                 {getContentIcon(topic.contentType)}
-                                <div>
-                                  <span className="text-sm font-medium text-gray-700">
+                                <div className="flex-1 min-w-0">
+                                  <h5 className="font-medium text-sm text-gray-900 truncate">
                                     {topic.title}
-                                  </span>
-                                  <div className="flex items-center space-x-2 mt-1">
-                                    <span className="text-xs text-gray-500">
-                                      {getContentTypeLabel(topic.contentType)}
-                                    </span>
-                                    {topic.estimatedDuration && (
-                                      <span className="text-xs text-gray-400">
-                                        • {topic.estimatedDuration}
-                                      </span>
-                                    )}
-                                  </div>
+                                  </h5>
+                                  <p className="text-xs text-gray-500">
+                                    {topic.estimatedDuration}
+                                  </p>
                                 </div>
                               </div>
-                              <div className="flex items-center space-x-1">
-                                {topic.hasDoubtButton && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onDoubtClick?.(topic.id, topic.title);
-                                    }}
-                                    className="p-1 rounded-full hover:bg-blue-200 text-blue-600"
-                                    title="Tirar dúvida"
-                                  >
-                                    <MessageSquare className="w-3 h-3" />
-                                  </button>
-                                )}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onTopicComplete(topic.id, !topic.completed);
-                                  }}
-                                  className={`p-1 rounded-full ${
-                                    topic.completed
-                                      ? 'text-green-600 hover:bg-green-200'
-                                      : 'text-gray-400 hover:bg-gray-200'
-                                  }`}
-                                >
-                                  <CheckCircle2 className="w-3 h-3" />
-                                </button>
-                              </div>
+                              {topic.completed && (
+                                <CheckCircle2 className="w-3 h-3 text-green-600" />
+                              )}
                             </button>
                           ))}
                         </div>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    )) || []
+                  )}
                 </div>
               )}
             </div>
@@ -354,8 +383,19 @@ export default function HierarchicalCourseView({
                       <p className="text-gray-600">
                         O conteúdo de aula-texto para este tópico será gerado automaticamente.
                       </p>
-                      <button className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                        Gerar Aula-Texto
+                      <button
+                        onClick={() => loadTopicContent(selectedTopic.id)}
+                        disabled={loadingContent === selectedTopic.id}
+                        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                      >
+                        {loadingContent === selectedTopic.id ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            <span>Gerando...</span>
+                          </>
+                        ) : (
+                          <span>Gerar Aula-Texto</span>
+                        )}
                       </button>
                     </div>
                   </div>

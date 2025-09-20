@@ -29,9 +29,12 @@ export default function CourseChat({ courseId, courseTitle, currentTopic }: Cour
   const [suggestedCourses, setSuggestedCourses] = useState<SupportCourse[]>([]);
   const [showSuggestion, setShowSuggestion] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   };
 
   useEffect(() => {
@@ -233,7 +236,10 @@ export default function CourseChat({ courseId, courseTitle, currentTopic }: Cour
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[300px] max-h-[500px]"
+      >
         {messages.length === 0 ? (
           <div className="text-center text-gray-500 mt-8">
             <Brain className="w-8 h-8 text-gray-400 mx-auto mb-2" />
