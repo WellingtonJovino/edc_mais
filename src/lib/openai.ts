@@ -1938,13 +1938,13 @@ export async function generateCourseSyllabus(
   console.log('🎯 Iniciando geração de syllabus com sistema pedagógico avançado...');
 
   // Importar sistemas pedagógicos
-  const { analyzePedagogicalStructure } = await import('./pedagogicalEngine');
+  // const { analyzePedagogicalStructure } = await import('./pedagogicalEngine'); // ARCHIVED
   const { buildSpecializedPrompt, validateSyllabusQuality } = await import('./prompts/pedagogicalPrompts');
-  const {
-    analyzeUserProfile,
-    generatePersonalizationRecommendations,
-    applyPersonalizationToPrompt
-  } = await import('./personalizationEngine');
+  // const {
+  //   analyzeUserProfile,
+  //   generatePersonalizationRecommendations,
+  //   applyPersonalizationToPrompt
+  // } = await import('./personalizationEngine'); // ARCHIVED
 
   try {
     // 1. Processar dados de livros se disponíveis
@@ -2189,7 +2189,7 @@ export async function generateCourseSyllabus(
 
     // Fallback: usar sistema pedagógico para gerar estrutura básica
     try {
-      const { analyzePedagogicalStructure, generateTopicStructure } = await import('./pedagogicalEngine');
+      // const { analyzePedagogicalStructure, generateTopicStructure } = await import('./pedagogicalEngine'); // ARCHIVED
 
       const pedagogicalAnalysis = analyzePedagogicalStructure(message, userProfile);
       const topic = message.substring(0, 50);
@@ -2277,13 +2277,13 @@ async function retrieveEvidencesForSyllabus(
   message: string,
   uploadedFiles?: any[]
 ): Promise<{ approved: any[], needsReview: any[] }> {
-  const { chunkDocument, chunkMultipleDocuments } = await import('./chunking');
-  const {
-    scoreEvidence,
-    rerankEvidences,
-    flagEvidencesForHumanReview,
-    combineEvidencesFromSources
-  } = await import('./evidence-scoring');
+  // const { chunkDocument, chunkMultipleDocuments } = await import('./chunking'); // ARCHIVED
+  // const {
+  //   scoreEvidence,
+  //   rerankEvidences,
+  //   flagEvidencesForHumanReview,
+  //   combineEvidencesFromSources
+  // } = await import('./evidence-scoring'); // ARCHIVED
   const { searchAcademicContent } = await import('./perplexity');
   const { cacheEvidences, generateEvidenceKey } = await import('./cache');
 
