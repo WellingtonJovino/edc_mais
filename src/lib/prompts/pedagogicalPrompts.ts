@@ -3,7 +3,18 @@
  * Baseados na Taxonomia de Bloom e melhores práticas pedagógicas
  */
 
-import { KnowledgeDomain, PedagogicalAnalysis } from '../pedagogicalEngine';
+// Tipos simplificados para V1 (pedagogicalEngine foi arquivado)
+interface KnowledgeDomain {
+  name: string;
+  type: string;
+}
+
+interface PedagogicalAnalysis {
+  domain: string;
+  complexity: string;
+  recommendedApproach: string;
+  bloomProgression: string[];
+}
 
 export interface SpecializedPrompt {
   domain: string;
@@ -425,11 +436,11 @@ export function buildSpecializedPrompt(
   message: string,
   userProfile: any
 ): string {
-  const domainKey = analysis.domain.name.toLowerCase();
+  const domainKey = analysis.domain.toLowerCase();
   const specializedPrompt = SPECIALIZED_PROMPTS[domainKey] || SPECIALIZED_PROMPTS['programming'];
 
-  const bloomLevels = analysis.bloomProgression.map(level =>
-    `Nível ${level} (${specializedPrompt.bloomGuidelines[level]})`
+  const bloomLevels = analysis.bloomProgression.map((level, index) =>
+    `Nível ${level} (${specializedPrompt.bloomGuidelines[index + 1] || 'Sem guideline específico'})`
   ).join('\n- ');
 
   return `${specializedPrompt.systemPrompt}
@@ -449,10 +460,9 @@ PERFIL DO ALUNO:
 - Experiência prévia: ${userProfile?.background || 'Não informado'}
 
 ANÁLISE PEDAGÓGICA:
-- Domínio: ${analysis.domain.name} (${analysis.domain.type})
+- Domínio: ${analysis.domain}
 - Complexidade: ${analysis.complexity}
 - Abordagem recomendada: ${analysis.recommendedApproach}
-- Duração estimada: ${analysis.estimatedDuration.total} horas (${analysis.estimatedDuration.theory}h teoria + ${analysis.estimatedDuration.practice}h prática)
 
 PROGRESSÃO BLOOM PLANEJADA:
 - ${bloomLevels}
@@ -513,7 +523,7 @@ export function validateSyllabusQuality(
   const improvements: string[] = [];
   let score = 10;
 
-  const domainKey = analysis.domain.name.toLowerCase();
+  const domainKey = analysis.domain.toLowerCase();
   const specializedPrompt = SPECIALIZED_PROMPTS[domainKey];
 
   // Validar regras específicas do domínio
@@ -521,7 +531,7 @@ export function validateSyllabusQuality(
     specializedPrompt.validationRules.forEach(rule => {
       // Implementar validações específicas baseadas nas regras
       // Esta é uma implementação simplificada
-      if (rule.includes('prático') && !checkPracticalBalance(syllabus, analysis.domain.type)) {
+      if (rule.includes('prático') && !checkPracticalBalance(syllabus, 'practical')) {
         score -= 2;
         feedback.push(`Balanceamento teoria/prática inadequado: ${rule}`);
         improvements.push('Adicionar mais atividades práticas');
@@ -530,7 +540,8 @@ export function validateSyllabusQuality(
   }
 
   // Validar progressão Bloom
-  if (!checkBloomProgression(syllabus, analysis.bloomProgression)) {
+  const numericProgression = analysis.bloomProgression.map((_, index) => index + 1);
+  if (!checkBloomProgression(syllabus, numericProgression)) {
     score -= 3;
     feedback.push('Progressão da Taxonomia de Bloom não respeitada');
     improvements.push('Reorganizar tópicos seguindo progressão cognitiva');

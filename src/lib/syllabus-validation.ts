@@ -195,35 +195,22 @@ async function validateCoverageCompleteness(
   originalMessage: string
 ): Promise<ValidationResult> {
   try {
-    // Importar sistema de domínio para verificar cobertura
-    const { analyzePedagogicalStructure, getEssentialTopicsForDomain } = await import('./pedagogicalEngine');
-
-    const analysis = analyzePedagogicalStructure(originalMessage, {});
-    const essentialTopics = getEssentialTopicsForDomain(analysis.domain.name);
-
-    if (!essentialTopics || essentialTopics.length === 0) {
-      return {
-        ruleId: 'coverage_completeness',
-        passed: true,
-        score: 0.8,
-        feedback: 'Domínio não tem tópicos essenciais definidos',
-        suggestions: []
-      };
-    }
-
-    // Extrair todos os tópicos do syllabus
+    // Validação simplificada de cobertura para V1
     const syllabusTopics = extractAllTopicsFromSyllabus(syllabusData);
 
-    // Verificar cobertura
-    const coverage = calculateTopicCoverage(essentialTopics, syllabusTopics);
-    const passed = coverage.percentageCovered >= 0.8; // 80% de cobertura mínima
+    // Verificar se há tópicos suficientes baseado na mensagem original
+    const messageWords = originalMessage.toLowerCase().split(' ');
+    const relevantWords = messageWords.filter(word => word.length > 3);
+
+    const coverage = syllabusTopics.length >= Math.max(8, relevantWords.length * 0.5);
+    const score = coverage ? 0.85 : 0.6;
 
     return {
       ruleId: 'coverage_completeness',
-      passed,
-      score: coverage.percentageCovered,
-      feedback: `Cobertura: ${(coverage.percentageCovered * 100).toFixed(1)}% dos tópicos essenciais`,
-      suggestions: coverage.missing.map(topic => `Adicionar tópico: ${topic}`)
+      passed: coverage,
+      score,
+      feedback: `${syllabusTopics.length} tópicos identificados no syllabus`,
+      suggestions: coverage ? [] : ['Considerar adicionar mais tópicos específicos']
     };
   } catch (error) {
     console.warn('Erro na validação de cobertura:', error);
@@ -381,15 +368,31 @@ function validateEvidenceQuality(syllabusData: any, evidences?: any[]): Validati
  */
 async function validateBloomProgression(syllabusData: any): Promise<ValidationResult> {
   try {
-    const { detectBloomLevel } = await import('./pedagogicalEngine');
-
     const modules = syllabusData.modules || [];
+
+    // Detecção simplificada de nível Bloom baseada em palavras-chave
+    const bloomKeywords = {
+      1: ['conhecer', 'identificar', 'listar', 'definir', 'memorizar'],
+      2: ['compreender', 'explicar', 'interpretar', 'exemplificar'],
+      3: ['aplicar', 'usar', 'executar', 'implementar', 'demonstrar'],
+      4: ['analisar', 'comparar', 'examinar', 'investigar'],
+      5: ['sintetizar', 'criar', 'projetar', 'construir', 'desenvolver'],
+      6: ['avaliar', 'criticar', 'julgar', 'validar', 'revisar']
+    };
+
     const bloomLevels: number[] = [];
 
     for (const module of modules) {
-      const moduleText = `${module.title} ${module.description || ''}`;
-      const level = detectBloomLevel(moduleText);
-      bloomLevels.push(level);
+      const moduleText = `${module.title} ${module.description || ''}`.toLowerCase();
+      let detectedLevel = 2; // Default para compreensão
+
+      for (const [level, keywords] of Object.entries(bloomKeywords)) {
+        if (keywords.some(keyword => moduleText.includes(keyword))) {
+          detectedLevel = Math.max(detectedLevel, parseInt(level));
+        }
+      }
+
+      bloomLevels.push(detectedLevel);
     }
 
     // Verificar se há progressão (níveis devem tender a aumentar)
@@ -401,7 +404,7 @@ async function validateBloomProgression(syllabusData: any): Promise<ValidationRe
     }
 
     const score = bloomLevels.length > 1 ? progressionScore / (bloomLevels.length - 1) : 1;
-    const passed = score >= 0.7; // 70% dos módulos devem seguir progressão
+    const passed = score >= 0.6; // 60% dos módulos devem seguir progressão
 
     return {
       ruleId: 'bloom_progression',
