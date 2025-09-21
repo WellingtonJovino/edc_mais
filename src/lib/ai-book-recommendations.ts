@@ -4,14 +4,14 @@
  */
 
 import OpenAI from 'openai';
-import { CacheManager } from './cache';
+// import { CacheManager } from './cache'; // ARCHIVED
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 // Cache específico para recomendações de livros (1 hora)
-const bookCache = new CacheManager<BookRecommendation[]>('book-recommendations', 60 * 60 * 1000);
+// const bookCache = new CacheManager<BookRecommendation[]>('book-recommendations', 60 * 60 * 1000); // ARCHIVED
 
 export interface BookRecommendation {
   title: string;
@@ -46,15 +46,12 @@ export async function generateBookRecommendations(
 
   const cacheKey = `books_${params.subject}_${params.level}_${params.language || 'pt'}_${(params.specificTopics || []).join('_')}`;
 
-  const cached = bookCache.get(cacheKey);
-  if (cached) {
-    console.log('✅ Recomendações obtidas do cache');
-    return cached;
-  }
+  // const cached = bookCache.get(cacheKey); // ARCHIVED - no cache for V1
+  // No cache for V1 - always generate fresh recommendations
 
   try {
     const prompt = `
-Como especialista em literatura acadêmica, recomende livros relevantes para o seguinte contexto:
+Como especialista em literatura e recomendações de livros, recomende livros relevantes para o seguinte contexto:
 
 **Assunto**: ${params.subject}
 **Nível**: ${params.level}
@@ -63,11 +60,14 @@ Como especialista em literatura acadêmica, recomende livros relevantes para o s
 ${params.specificTopics ? `**Tópicos específicos**: ${params.specificTopics.join(', ')}` : ''}
 
 Critérios para recomendação:
-1. Livros amplamente reconhecidos na área
-2. Adequados ao nível especificado
+1. Livros amplamente reconhecidos e bem avaliados na área
+2. Adequados ao nível especificado (iniciante/intermediário/avançado)
 3. Disponíveis em português quando possível
-4. Autores respeitados no campo
-5. Conteúdo atualizado e relevante
+4. Autores respeitados e com credibilidade no campo
+5. Conteúdo prático, atualizado e relevante
+6. Para temas acadêmicos: foco em livros técnicos e científicos
+7. Para desenvolvimento pessoal: foco em livros práticos com base científica
+8. Para habilidades práticas: livros com metodologia clara e exercícios
 
 Para cada livro, forneça:
 - Título completo
@@ -145,7 +145,7 @@ Limite: ${params.maxBooks || 5} livros máximo.
 
     console.log(`✅ ${recommendations.length} recomendações de livros geradas`);
 
-    bookCache.set(cacheKey, recommendations);
+    // bookCache.set(cacheKey, recommendations); // ARCHIVED - no cache for V1
     return recommendations;
 
   } catch (error) {
@@ -217,6 +217,66 @@ function getDefaultRecommendations(params: BookRecommendationParams): BookRecomm
         reason: 'Fundamental para qualquer programador que quer melhorar a qualidade do código.',
         availableFormats: ['PDF', 'ebook', 'físico'],
         estimatedPages: 464,
+        difficulty: 6
+      }
+    ],
+    'culinária': [
+      {
+        title: 'Livro de Culinária da Rita Lobo',
+        authors: ['Rita Lobo'],
+        description: 'Receitas práticas e saudáveis para o dia a dia, com dicas de organização da cozinha.',
+        level: params.level,
+        language: 'pt',
+        year: 2020,
+        topics: ['receitas', 'alimentação saudável', 'organização', 'técnicas culinárias'],
+        reason: 'Excelente para quem quer aprender a cozinhar de forma prática e saudável.',
+        availableFormats: ['físico', 'ebook'],
+        estimatedPages: 320,
+        difficulty: 3
+      }
+    ],
+    'autoconhecimento': [
+      {
+        title: 'Inteligência Emocional',
+        authors: ['Daniel Goleman'],
+        description: 'Livro fundamental sobre como desenvolver e aplicar a inteligência emocional na vida pessoal e profissional.',
+        level: params.level,
+        language: 'pt',
+        year: 2012,
+        topics: ['inteligência emocional', 'autoconhecimento', 'relacionamentos', 'liderança'],
+        reason: 'Referência mundial em desenvolvimento pessoal e inteligência emocional.',
+        availableFormats: ['PDF', 'ebook', 'físico'],
+        estimatedPages: 384,
+        difficulty: 5
+      }
+    ],
+    'produtividade': [
+      {
+        title: 'Hábitos Atômicos',
+        authors: ['James Clear'],
+        description: 'Método comprovado para construir bons hábitos e se livrar dos maus hábitos.',
+        level: params.level,
+        language: 'pt',
+        year: 2019,
+        topics: ['hábitos', 'produtividade', 'mudança comportamental', 'metas'],
+        reason: 'Estratégias práticas e baseadas em ciência para transformar pequenas mudanças em grandes resultados.',
+        availableFormats: ['PDF', 'ebook', 'físico'],
+        estimatedPages: 320,
+        difficulty: 4
+      }
+    ],
+    'memória': [
+      {
+        title: 'A Arte da Memória',
+        authors: ['Joshua Foer'],
+        description: 'Técnicas científicas e práticas para melhorar drasticamente sua capacidade de memorização.',
+        level: params.level,
+        language: 'pt',
+        year: 2011,
+        topics: ['técnicas de memorização', 'neurociência', 'aprendizado', 'concentração'],
+        reason: 'Combina ciência e técnicas práticas para desenvolver uma memória excepcional.',
+        availableFormats: ['PDF', 'ebook', 'físico'],
+        estimatedPages: 304,
         difficulty: 6
       }
     ]

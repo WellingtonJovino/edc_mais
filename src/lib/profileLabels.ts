@@ -9,6 +9,7 @@ export interface ProfileLabels {
   level: string;
   purpose: string;
   timeAvailable: string;
+  educationLevel?: string;
 }
 
 /**
@@ -40,6 +41,18 @@ const TIME_AVAILABLE_LABELS: Record<string, string> = {
 };
 
 /**
+ * Mapeamento para níveis educacionais
+ */
+const EDUCATION_LEVEL_LABELS: Record<string, string> = {
+  'high_school': 'Ensino Médio',
+  'undergraduate': 'Graduação',
+  'graduate': 'Pós-Graduação',
+  'professional': 'Profissional',
+  'personal_development': 'Desenvolvimento Pessoal',
+  'other': 'Outro'
+};
+
+/**
  * Converte valores internos do perfil para labels em português
  * @param profile - Perfil do usuário com valores internos
  * @returns Perfil com labels em português para exibição
@@ -48,21 +61,23 @@ export function getProfileLabels(profile: {
   level: string;
   purpose: string;
   timeAvailable: string;
+  educationLevel?: string;
 }): ProfileLabels {
   return {
     level: LEVEL_LABELS[profile.level] || profile.level,
     purpose: PURPOSE_LABELS[profile.purpose] || profile.purpose,
-    timeAvailable: TIME_AVAILABLE_LABELS[profile.timeAvailable] || profile.timeAvailable
+    timeAvailable: TIME_AVAILABLE_LABELS[profile.timeAvailable] || profile.timeAvailable,
+    educationLevel: profile.educationLevel ? EDUCATION_LEVEL_LABELS[profile.educationLevel] || profile.educationLevel : undefined
   };
 }
 
 /**
  * Converte um valor individual para seu label correspondente
  * @param value - Valor interno
- * @param field - Campo do perfil (level, purpose, timeAvailable)
+ * @param field - Campo do perfil (level, purpose, timeAvailable, educationLevel)
  * @returns Label em português ou o valor original se não encontrado
  */
-export function getFieldLabel(value: string, field: 'level' | 'purpose' | 'timeAvailable'): string {
+export function getFieldLabel(value: string, field: 'level' | 'purpose' | 'timeAvailable' | 'educationLevel'): string {
   switch (field) {
     case 'level':
       return LEVEL_LABELS[value] || value;
@@ -70,6 +85,8 @@ export function getFieldLabel(value: string, field: 'level' | 'purpose' | 'timeA
       return PURPOSE_LABELS[value] || value;
     case 'timeAvailable':
       return TIME_AVAILABLE_LABELS[value] || value;
+    case 'educationLevel':
+      return EDUCATION_LEVEL_LABELS[value] || value;
     default:
       return value;
   }

@@ -5,11 +5,10 @@ import { BookOpen, Brain, Youtube, Upload, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ChatInterface from '@/components/ChatInterface';
-import LearningPlan from '@/components/LearningPlan';
 import FileUpload from '@/components/FileUpload';
 import UserQuestionnaire from '@/components/UserQuestionnaire';
 import TinySyllabusEditor from '@/components/TinySyllabusEditor';
-import { LearningPlan as LearningPlanType, ChatMessage, UploadedFile } from '@/types';
+import { ChatMessage, UploadedFile } from '@/types';
 import { getProfileLabels } from '@/lib/profileLabels';
 
 interface UserProfile {
@@ -19,6 +18,7 @@ interface UserProfile {
   background: string;
   specificGoals: string;
   learningStyle: string;
+  educationLevel?: 'high_school' | 'undergraduate' | 'graduate' | 'professional' | 'personal_development';
   priorKnowledge?: string;
 }
 
@@ -31,7 +31,6 @@ interface SyllabusData {
 
 export default function HomePage() {
   const router = useRouter();
-  const [currentPlan, setCurrentPlan] = useState<LearningPlanType | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -43,42 +42,77 @@ export default function HomePage() {
   const [currentSyllabus, setCurrentSyllabus] = useState<SyllabusData | null>(null);
   const [isCreatingCourse, setIsCreatingCourse] = useState(false);
 
-  // Estado do loading progress
+  // Estado do loading progress sincronizado com o sistema
   const [loadingProgress, setLoadingProgress] = useState({
     currentStep: 1,
     progress: 0,
-    currentActivity: '',
     isComplete: false,
   });
 
-  // Helper para simular progresso durante a geração
-  const simulateProgress = () => {
-    // Reset do progresso
+  // Sistema de progresso em tempo real com SSE
+  const [sessionId, setSessionId] = useState<string>('');
+  const [eventSource, setEventSource] = useState<EventSource | null>(null);
+
+  const startProgressTracking = (sessionId: string) => {
+    // Fechar conexão anterior se existir
+    if (eventSource) {
+      eventSource.close();
+    }
+
+    // Iniciar Server-Sent Events
+    const es = new EventSource(`/api/analyze/status?sessionId=${sessionId}`);
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setLoadingProgress({
+          currentStep: data.currentStep,
+          progress: data.progress,
+          isComplete: data.isComplete
+        });
+
+        if (data.isComplete) {
+          es.close();
+          setEventSource(null);
+        }
+      } catch (error) {
+        console.error('Erro ao parsear progresso:', error);
+      }
+    };
+
+    es.onerror = (error) => {
+      console.error('Erro no EventSource:', error);
+      es.close();
+      setEventSource(null);
+    };
+
+    setEventSource(es);
+  };
+
+  const resetProgress = () => {
     setLoadingProgress({
       currentStep: 1,
       progress: 0,
-      currentActivity: 'Inicializando análise...',
       isComplete: false,
     });
+  };
 
-    const progressSteps = [
-      { step: 1, progress: 25, activity: 'Analisando objetivo de aprendizado...', delay: 2000 },
-      { step: 2, progress: 50, activity: 'Buscando referências acadêmicas...', delay: 4000 },
-      { step: 3, progress: 75, activity: 'Estruturando módulos pedagógicos...', delay: 6000 },
-      { step: 4, progress: 90, activity: 'Validando qualidade científica...', delay: 8000 },
-    ];
-
-    progressSteps.forEach(({ step, progress, activity, delay }) => {
-      setTimeout(() => {
-        setLoadingProgress(prev => ({
-          ...prev,
-          currentStep: step,
-          progress,
-          currentActivity: activity,
-        }));
-      }, delay);
+  const completeProgress = () => {
+    setLoadingProgress({
+      currentStep: 4,
+      progress: 100,
+      isComplete: true,
     });
   };
+
+  // Cleanup EventSource quando o componente for desmontado
+  useEffect(() => {
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, [eventSource]);
 
   const handleSendMessage = async (message: string, files?: UploadedFile[]) => {
     // Detectar comando para gerar curso de pré-requisito
@@ -151,7 +185,7 @@ Como gostaria de proceder?`,
 
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
-    simulateProgress();
+    resetProgress();
 
     try {
       // Criar mensagem especializada para pré-requisito
@@ -163,6 +197,13 @@ Perfil do usuário:
 - Tempo disponível: moderate
 - Experiência prévia: Este é um curso de pré-requisito para outra matéria
 - Objetivos específicos: Adquirir base necessária para prosseguir em outros cursos`;
+
+      // Gerar sessionId único para pré-requisito
+      const currentSessionId = `prereq_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      setSessionId(currentSessionId);
+
+      // Iniciar rastreamento de progresso
+      startProgressTracking(currentSessionId);
 
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -178,7 +219,8 @@ Perfil do usuário:
             timeAvailable: 'moderate',
             background: 'Este é um curso de pré-requisito',
             specificGoals: 'Adquirir base necessária para outros cursos'
-          }
+          },
+          sessionId: currentSessionId
         }),
       });
 
@@ -238,17 +280,13 @@ Tente novamente ou especifique o nome de forma diferente.
 
       setMessages(prev => [...prev, errorMessage]);
     } finally {
-      // Finalizar progresso
-      setLoadingProgress(prev => ({
-        ...prev,
-        currentStep: 4,
-        progress: 100,
-        currentActivity: 'Curso de pré-requisito gerado!',
-        isComplete: true,
-      }));
-
       setTimeout(() => {
         setIsLoading(false);
+        // Fechar EventSource
+        if (eventSource) {
+          eventSource.close();
+          setEventSource(null);
+        }
       }, 1000);
     }
   };
@@ -266,6 +304,7 @@ Perfil do usuário:
 - Nível: ${profile.level}
 - Objetivo: ${profile.purpose}
 - Tempo disponível: ${profile.timeAvailable}
+- Nível educacional: ${profile.educationLevel || 'undergraduate'}
 - Experiência prévia: ${profile.background || 'Nenhuma experiência informada'}
 - Objetivos específicos: ${profile.specificGoals || 'Não especificados'}`;
 
@@ -277,7 +316,7 @@ Perfil do usuário:
 Perfil de Aprendizado:
 • Nível: ${profileLabels.level}
 • Objetivo: ${profileLabels.purpose}
-• Tempo disponível: ${profileLabels.timeAvailable}
+• Tempo disponível: ${profileLabels.timeAvailable}${profileLabels.educationLevel ? `\n• Nível educacional: ${profileLabels.educationLevel}` : ''}
 • Experiência prévia: ${profile.background || 'Não informado'}
 • Objetivos específicos: ${profile.specificGoals || 'Não informado'}`,
       timestamp: new Date().toISOString(),
@@ -285,7 +324,14 @@ Perfil de Aprendizado:
 
     setMessages([userMessage]);
     setIsLoading(true);
-    simulateProgress();
+    resetProgress();
+
+    // Gerar sessionId único para rastrear progresso
+    const currentSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setSessionId(currentSessionId);
+
+    // Iniciar rastreamento de progresso
+    startProgressTracking(currentSessionId);
 
     try {
       const response = await fetch('/api/analyze', {
@@ -296,7 +342,8 @@ Perfil de Aprendizado:
         body: JSON.stringify({
           message: enrichedMessage,
           uploadedFiles: uploadedFiles,
-          userProfile: profile
+          userProfile: profile,
+          sessionId: currentSessionId
         }),
       });
 
@@ -395,18 +442,14 @@ Quando estiver satisfeito, clique em "Gerar Curso" para criar as aulas!`;
 
       setMessages(prev => [...prev, errorMessage]);
     } finally {
-      // Finalizar progresso
-      setLoadingProgress(prev => ({
-        ...prev,
-        currentStep: 4,
-        progress: 100,
-        currentActivity: 'Curso gerado com sucesso!',
-        isComplete: true,
-      }));
-
       setTimeout(() => {
         setIsLoading(false);
         setPendingMessage('');
+        // Fechar EventSource
+        if (eventSource) {
+          eventSource.close();
+          setEventSource(null);
+        }
       }, 1000);
     }
   };
@@ -480,29 +523,6 @@ Quando estiver satisfeito, clique em "Gerar Curso" para criar as aulas!`;
     setMessages([]);
   };
 
-  const handleTopicComplete = async (topicId: string, completed: boolean) => {
-    if (!currentPlan) return;
-
-    try {
-      const response = await fetch(`/api/plans/${currentPlan.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'update_topic_progress',
-          data: { topicId, completed },
-        }),
-      });
-
-      if (response.ok) {
-        const updatedPlan = await response.json();
-        setCurrentPlan(updatedPlan);
-      }
-    } catch (error) {
-      console.error('Erro ao atualizar progresso:', error);
-    }
-  };
 
   return (
     <div className="h-screen flex flex-col overflow-hidden" style={{
@@ -580,14 +600,6 @@ Quando estiver satisfeito, clique em "Gerar Curso" para criar as aulas!`;
                   onCancel={handleSyllabusCancel}
                   isCreating={isCreatingCourse}
                 />
-              ) : currentPlan ? (
-                <div className="bg-gray-50 rounded-lg p-4 overflow-y-auto h-full">
-                  <LearningPlan
-                    plan={currentPlan}
-                    onTopicComplete={handleTopicComplete}
-                    progress={currentPlan.progress}
-                  />
-                </div>
               ) : (
                 <div className="h-full flex items-center justify-center text-center">
                   <div className="max-w-md">

@@ -1,21 +1,21 @@
 import OpenAI from 'openai';
-import { detectUniversityDiscipline, getExpandedStructureHints } from './university-courses-detector';
-import { getAcademicTemplate, adaptTemplateForUserGoal } from './academic-curriculum-templates';
-import { generatePerplexityPrompt } from '../../new_functions';
-import { validateAndImproveFinalStructure, ensureMinimumQualityStandards } from '../../final_validation';
+// import { detectUniversityDiscipline, getExpandedStructureHints } from './university-courses-detector'; // ARCHIVED
+// import { getAcademicTemplate, adaptTemplateForUserGoal } from './academic-curriculum-templates'; // ARCHIVED
+// import { generatePerplexityPrompt } from '../../new_functions'; // ARCHIVED
+// import { validateAndImproveFinalStructure, ensureMinimumQualityStandards } from '../../final_validation'; // ARCHIVED
 
-// Configurar limpeza automática do cache
-if (typeof global !== 'undefined') {
-  (async () => {
-    try {
-      const { setupAutomaticCleanup } = await import('./cache');
-      setupAutomaticCleanup(60); // Cleanup a cada 60 minutos
-      console.log('🔄 Cache automatic cleanup configurado');
-    } catch (error) {
-      console.warn('⚠️ Erro ao configurar cleanup automático do cache:', error);
-    }
-  })();
-}
+// Cache automatic cleanup disabled for V1
+// if (typeof global !== 'undefined') {
+//   (async () => {
+//     try {
+//       const { setupAutomaticCleanup } = await import('./cache');
+//       setupAutomaticCleanup(60);
+//       console.log('🔄 Cache automatic cleanup configurado');
+//     } catch (error) {
+//       console.warn('⚠️ Erro ao configurar cleanup automático do cache:', error);
+//     }
+//   })();
+// }
 import {
   AulaTextoStructure,
   AulaTextoConfig,
@@ -835,7 +835,7 @@ export async function analyzeLearningGoal(userMessage: string, level?: string, u
 
   try {
     // Importar processador de tópicos
-    const { processTopicsIntoCourse } = await import('./topic-processor');
+    // const { processTopicsIntoCourse } = await import('./topic-processor'); // ARCHIVED
 
     // Usar a mensagem original como assunto
     const subject = userMessage;
@@ -847,12 +847,13 @@ export async function analyzeLearningGoal(userMessage: string, level?: string, u
     let ragSources: string[] = [];
 
     try {
-      // STEP 1A: Gerar prompt otimizado para Perplexity usando GPT
-      const optimizedPrompt = await generatePerplexityPrompt(subject);
-      console.log('📝 Prompt Perplexity otimizado gerado');
+      // ARCHIVED: generatePerplexityPrompt não disponível na V1
+      // const optimizedPrompt = await generatePerplexityPrompt(subject);
+      // console.log('📝 Prompt Perplexity otimizado gerado');
 
       const { searchRequiredTopics } = await import('./perplexity');
-      academicTopics = await searchRequiredTopics(subject, level || 'intermediate', optimizedPrompt);
+      const fallbackPrompt = `Ensino superior: ${subject}. Liste os tópicos essenciais que devem ser cobertos em um curso acadêmico.`;
+      academicTopics = await searchRequiredTopics(subject, level || 'intermediate', fallbackPrompt);
       console.log('✅ Tópicos acadêmicos encontrados:', academicTopics.length);
     } catch (perplexityError) {
       console.warn('⚠️ Erro na busca de tópicos acadêmicos:', perplexityError);
@@ -890,7 +891,20 @@ export async function analyzeLearningGoal(userMessage: string, level?: string, u
         console.log(`    ${i+1}. ${t.substring(0, 80)}${t.length > 80 ? '...' : ''}`);
       });
 
-      const processed = processTopicsIntoCourse(academicTopics, 15);
+      // ARCHIVED: processTopicsIntoCourse não disponível na V1
+      // const processed = processTopicsIntoCourse(academicTopics, 15);
+
+      // Fallback simples para V1
+      const processed = {
+        modules: [],
+        topics: academicTopics.slice(0, 50),
+        totalTopics: academicTopics.length,
+        stats: {
+          originalCount: academicTopics.length,
+          deduplicatedCount: academicTopics.length,
+          modulesCreated: 0
+        }
+      };
 
       console.log(`\n📊 RESULTADO DO PROCESSAMENTO:`);
       console.log(`  - Tópicos originais: ${processed.stats.originalCount}`);
@@ -899,9 +913,8 @@ export async function analyzeLearningGoal(userMessage: string, level?: string, u
       console.log(`  - Total tópicos final: ${processed.totalTopics}`);
 
       console.log(`\n📚 ESTRUTURA DOS MÓDULOS:`);
-      processed.modules.forEach((mod, i) => {
-        console.log(`  Módulo ${i+1}: "${mod.title}" - ${mod.topics.length} tópicos`);
-      });
+      // ARCHIVED: modules array está vazio na V1
+      console.log(`  - Nenhum módulo pré-estruturado (V1 usa GPT para estruturação)`);
 
       dynamicTemplate = {
         courseTitle: `Curso Completo de ${subject}`,
@@ -916,7 +929,7 @@ export async function analyzeLearningGoal(userMessage: string, level?: string, u
         searchQueries: []
       };
 
-      console.log(`\n✅ PIPELINE DIRETO: ${processed.totalTopics} tópicos preservados em ${processed.modules.length} módulos`);
+      console.log(`\n✅ PIPELINE DIRETO (V1): ${processed.totalTopics} tópicos encontrados`);
     } else {
       // Caso 2: Poucos tópicos - usar GPT para gerar estrutura
       console.log(`\n🤖 GERAÇÃO GPT TRADICIONAL`);
@@ -1022,22 +1035,12 @@ export async function analyzeLearningGoal(userMessage: string, level?: string, u
 
     console.log(`✅ Estrutura dinâmica gerada e validada: ${finalTemplate.modules.length} módulos, ${finalTemplate.topics?.length} tópicos`);
 
-    // STEP FINAL: Validação e melhoria final da estrutura antes de enviar ao usuário
-    console.log('🔍 Executando validação final da estrutura do curso...');
-    const finalValidation = await validateAndImproveFinalStructure(finalTemplate, subject);
+    // ARCHIVED: Validação final não disponível na V1
+    // const finalValidation = await validateAndImproveFinalStructure(finalTemplate, subject);
+    // const qualityAssuredStructure = await ensureMinimumQualityStandards(finalValidation.improvedStructure, subject);
 
-    if (finalValidation.changesApplied.length > 0) {
-      console.log(`🔄 Melhorias aplicadas: ${finalValidation.changesApplied.length} mudanças`);
-      finalValidation.changesApplied.forEach(change => console.log(`   - ${change}`));
-    }
-
-    console.log(`📊 Score final de qualidade: ${finalValidation.validationScore}/10`);
-
-    // Garantir padrões mínimos de qualidade
-    const qualityAssuredStructure = await ensureMinimumQualityStandards(
-      finalValidation.improvedStructure,
-      subject
-    );
+    console.log('🔍 Validação final simplificada (V1)...');
+    const qualityAssuredStructure = finalTemplate; // Usar estrutura diretamente na V1
 
     // DEBUG FINAL: Rastrear conte\u00fado completo
     const finalTopicCount = qualityAssuredStructure.modules?.reduce((sum: number, m: any) => sum + (m.topics?.length || 0), 0) || 0;
@@ -1063,10 +1066,13 @@ export async function analyzeLearningGoal(userMessage: string, level?: string, u
     };
   } = {};
 
-  // SEMPRE usar estrutura expandida para QUALQUER solicitação de aprendizado
-  const structureHints = contextInfo.isUniversityDiscipline && contextInfo.discipline
-    ? getExpandedStructureHints(contextInfo.discipline as any)
-    : { suggestedModules: 8, suggestedTopicsPerModule: 7, includeExercises: true, includeLab: true };
+  // ARCHIVED: getExpandedStructureHints não disponível na V1
+  // const structureHints = contextInfo.isUniversityDiscipline && contextInfo.discipline
+  //   ? getExpandedStructureHints(contextInfo.discipline as any)
+  //   : { suggestedModules: 8, suggestedTopicsPerModule: 7, includeExercises: true, includeLab: true };
+
+  // Fallback simples para V1
+  const structureHints = { suggestedModules: 8, suggestedTopicsPerModule: 7, includeExercises: true, includeLab: true };
 
   // SEMPRE gerar estruturas robustas com muitos módulos e tópicos
   const moduleRange = `${Math.max(8, structureHints?.suggestedModules || 8)} a ${Math.max(12, (structureHints?.suggestedModules || 8) + 4)}`;
@@ -2355,7 +2361,7 @@ async function retrieveEvidencesForSyllabus(
   //   combineEvidencesFromSources
   // } = await import('./evidence-scoring'); // ARCHIVED
   const { searchAcademicContent } = await import('./perplexity');
-  const { cacheEvidences, generateEvidenceKey } = await import('./cache');
+  // const { cacheEvidences, generateEvidenceKey } = await import('./cache'); // ARCHIVED
 
   const allEvidences: any[] = [];
 
@@ -2364,7 +2370,7 @@ async function retrieveEvidencesForSyllabus(
     if (uploadedFiles && uploadedFiles.length > 0) {
       console.log('📄 Processando documentos enviados...');
 
-      const { cacheDocumentChunks } = await import('./cache');
+      // const { cacheDocumentChunks } = await import('./cache'); // ARCHIVED
 
       const documents = uploadedFiles.map(file => ({
         content: file.content || '',
@@ -2409,22 +2415,17 @@ async function retrieveEvidencesForSyllabus(
     console.log('🔍 Buscando evidências académicas no Perplexity...');
 
     try {
-      const perplexityKey = generateEvidenceKey(message, {
-        source: 'perplexity',
-        maxResults: 15,
-        language: 'pt'
-      });
+      // ARCHIVED: generateEvidenceKey não disponível na V1
+      // const perplexityKey = generateEvidenceKey(message, { source: 'perplexity', maxResults: 15, language: 'pt' });
+      const perplexityKey = `perplexity_${Date.now()}`; // Fallback simples
 
-      const perplexityResponse = await cacheEvidences(
-        perplexityKey,
-        () => searchAcademicContent({
+      // const perplexityResponse = await cacheEvidences(perplexityKey,  // ARCHIVED
+      const perplexityResponse = await searchAcademicContent({
           query: message,
           language: 'pt',
           maxResults: 15,
           siteFilters: ['site:.edu', 'site:edu.br', 'site:scholar.google.com', 'filetype:pdf']
-        }),
-        7 * 24 * 60 * 60 * 1000 // 7 dias TTL
-      );
+        });
 
       // Processar resposta do Perplexity
       if (perplexityResponse.answer) {
@@ -2489,10 +2490,10 @@ async function retrieveEvidencesForSyllabus(
 
     console.log(`✅ Evidências processadas: ${approved.length} aprovadas, ${needsReview.length} para revisão`);
 
-    // Log cache statistics
-    const { ragCache, generateCacheReport } = await import('./cache');
-    const cacheStats = ragCache.getStats();
-    console.log(`💾 Cache stats: ${cacheStats.entries} entradas, ${(ragCache.getHitRate() * 100).toFixed(1)}% hit rate`);
+    // Log cache statistics - disabled for V1
+    // const { ragCache, generateCacheReport } = await import('./cache'); // ARCHIVED
+    // const cacheStats = ragCache.getStats();
+    // console.log(`💾 Cache stats: ${cacheStats.entries} entradas, ${(ragCache.getHitRate() * 100).toFixed(1)}% hit rate`);
 
     return { approved, needsReview };
 

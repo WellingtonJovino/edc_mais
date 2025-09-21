@@ -4,8 +4,8 @@ import { validateTopicsWithPerplexity, analyzeUploadedFiles, searchRequiredTopic
 import { generateFallbackAnalysis } from '@/lib/analysis-fallback';
 import { askAssistantWithFiles } from '@/lib/openai-files';
 // Import new GPT-based functions
-import { extractLearningSubject, detectSubjectWithGPT, generatePerplexityPrompt } from '../../../../new_functions';
-import { validateAndImproveFinalStructure, ensureMinimumQualityStandards } from '../../../../final_validation';
+// import { extractLearningSubject, detectSubjectWithGPT, generatePerplexityPrompt } from '../../../../new_functions'; // ARCHIVED
+// import { validateAndImproveFinalStructure, ensureMinimumQualityStandards } from '../../../../final_validation'; // ARCHIVED
 // Import new pipeline
 import { runCourseGenerationPipeline } from '@/lib/course-generation-pipeline';
 // Removido: saveLearningPlan e saveCourse não são mais usados na fase de estruturação
@@ -28,6 +28,25 @@ interface EnhancedTopic {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// Função helper para atualizar progresso
+async function updateProgress(sessionId: string, progress: number, currentStep: number, message: string = '') {
+  try {
+    await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/analyze/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId,
+        progress,
+        currentStep,
+        message,
+        isComplete: progress >= 100
+      })
+    });
+  } catch (error) {
+    console.log('⚠️ Erro ao atualizar progresso:', error);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     console.log('🔍 Recebendo request...');
@@ -47,7 +66,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { message, uploadedFiles, userProfile } = requestData;
+    const { message, uploadedFiles, userProfile, sessionId } = requestData;
 
     // Debug: Mostrar perfil do usuário completo
     console.log('👤 Perfil do usuário recebido:', JSON.stringify(userProfile, null, 2));
@@ -77,10 +96,14 @@ export async function POST(request: NextRequest) {
       console.log('🚀 Usando NOVO pipeline de geração completo...');
 
       try {
+        // Etapa 1: Analisando objetivo (0-25%)
+        if (sessionId) await updateProgress(sessionId, 5, 1, 'Analisando objetivo de aprendizado...');
+
         const pipelineResult = await runCourseGenerationPipeline(
           message,
           userProfile || {},
-          uploadedFiles
+          uploadedFiles,
+          sessionId ? (progress: number, step: number, msg: string) => updateProgress(sessionId, progress, step, msg) : undefined
         );
 
         // Converter resultado do pipeline para o formato esperado
@@ -103,6 +126,9 @@ export async function POST(request: NextRequest) {
         }
 
         console.log(`✅ Pipeline completo executado: ${analysis.modules?.length} módulos, ${analysis.topics?.length} tópicos`);
+
+        // Finalizar progresso
+        if (sessionId) await updateProgress(sessionId, 100, 4, 'Curso gerado com sucesso!');
 
         // Retornar no formato esperado pelo frontend
         return NextResponse.json({
@@ -135,7 +161,12 @@ export async function POST(request: NextRequest) {
     let isContextUseful: boolean;
 
     try {
-      const subjectExtraction = await extractLearningSubject(message);
+      // Simple subject extraction for V1 - fallback implementation
+      const subjectExtraction = {
+        subject: message.replace(/quero (aprender|estudar)\s*/i, '').trim().substring(0, 100),
+        context: '',
+        isContextUseful: false
+      };
       extractedSubject = subjectExtraction.subject;
       subjectContext = subjectExtraction.context;
       isContextUseful = subjectExtraction.isContextUseful;
@@ -156,7 +187,12 @@ export async function POST(request: NextRequest) {
     let isAcademic: boolean;
 
     try {
-      const disciplineDetection = await detectSubjectWithGPT(message);
+      // Simple discipline detection for V1 - fallback implementation
+      const disciplineDetection = {
+        discipline: extractedSubject,
+        confidence: 0.8,
+        isAcademic: true
+      };
       detectedDiscipline = disciplineDetection.discipline;
       disciplineConfidence = disciplineDetection.confidence;
       isAcademic = disciplineDetection.isAcademic;
@@ -242,7 +278,8 @@ export async function POST(request: NextRequest) {
     let customPerplexityPrompt: string | undefined = undefined;
 
     try {
-      customPerplexityPrompt = await generatePerplexityPrompt(extractedSubject);
+      // Simple prompt generation for V1 - fallback implementation
+      customPerplexityPrompt = `Quais são os tópicos essenciais para aprender ${extractedSubject}?`;
       console.log(`✅ Prompt Perplexity gerado: "${customPerplexityPrompt.substring(0, 100)}..."`);
     } catch (error) {
       console.warn('⚠️ Falha na geração do prompt Perplexity, usando padrão:', error);
@@ -799,8 +836,9 @@ export async function POST(request: NextRequest) {
       fileAnalysis,
     };
 
-    // NOVA FUNCIONALIDADE: Validação final da estrutura do curso usando GPT
-    console.log('🔍 Validando estrutura final do curso...');
+    // VALIDAÇÃO FINAL: Disabled for V1
+    console.log('🔍 Validação final desabilitada para V1');
+    /*
     try {
       const finalValidation = await validateAndImproveFinalStructure(
         finalCourseStructure.goal,
@@ -848,6 +886,7 @@ export async function POST(request: NextRequest) {
       console.warn('⚠️ Erro na validação final, usando estrutura original:', error);
       // Continuar com a estrutura original se a validação falhar
     }
+    */
 
     return NextResponse.json({
       success: true,

@@ -16,7 +16,6 @@ interface ChatInterfaceProps {
   loadingProgress?: {
     currentStep: number;
     progress: number;
-    currentActivity?: string;
     isComplete?: boolean;
   };
 }
@@ -121,9 +120,7 @@ export default function ChatInterface({
                 currentStep={loadingProgress.currentStep}
                 totalSteps={4}
                 progress={loadingProgress.progress}
-                currentActivity={loadingProgress.currentActivity}
                 isComplete={loadingProgress.isComplete}
-                estimatedTimeMs={120000} // 2 minutos estimado
               />
             ) : (
               <div className="bg-white border border-gray-200 rounded-lg px-4 py-2">

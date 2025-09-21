@@ -10,7 +10,7 @@ interface UserProfile {
   background: string;
   specificGoals: string;
   learningStyle: string;
-  educationLevel?: 'high_school' | 'undergraduate' | 'graduate' | 'professional';
+  educationLevel?: 'high_school' | 'undergraduate' | 'graduate' | 'professional' | 'personal_development';
   priorKnowledge?: string;
 }
 
@@ -99,6 +99,7 @@ export default function UserQuestionnaire({
         { value: 'undergraduate', label: 'Graduação', description: 'Disciplina de faculdade/universidade' },
         { value: 'graduate', label: 'Pós-Graduação', description: 'Mestrado, doutorado ou especialização' },
         { value: 'professional', label: 'Profissional', description: 'Cursos técnicos ou profissionalizantes' },
+        { value: 'personal_development', label: 'Desenvolvimento Pessoal', description: 'Habilidades pessoais, culinária, autoconhecimento, etc.' },
         { value: 'other', label: 'Outro', description: 'Descreva o nível específico' }
       ]
     },

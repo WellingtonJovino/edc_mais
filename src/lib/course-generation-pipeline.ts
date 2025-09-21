@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
-import { getAvailableModel, calculateSafeTokenLimit, estimateCost } from './model-utils';
+// import { getAvailableModel, calculateSafeTokenLimit, estimateCost } from './model-utils'; // ARCHIVED
 import { searchRequiredTopics } from './perplexity';
-import { WebSearch } from './websearch';
+// import { WebSearch } from './websearch'; // ARCHIVED
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -36,7 +36,7 @@ export async function extractSubject(userMessage: string): Promise<{
   console.log(`🤖 Extraindo assunto com GPT...`);
   console.log(`🔍 Extraindo assunto da mensagem: "${userMessage.substring(0, 100)}..."`);
 
-  const model = getAvailableModel(['gpt-4o-mini', 'gpt-3.5-turbo']);
+  const model = 'gpt-4o-mini'; // Fallback model
 
   const completion = await openai.chat.completions.create({
     model,
@@ -91,7 +91,7 @@ export async function detectAcademicDiscipline(
 }> {
   console.log(`🎓 Detectando disciplina com GPT...`);
 
-  const model = getAvailableModel(['gpt-4o-mini', 'gpt-3.5-turbo']);
+  const model = 'gpt-4o-mini'; // Fallback model
 
   const completion = await openai.chat.completions.create({
     model,
@@ -163,7 +163,8 @@ Organize em uma lista completa e detalhada.`;
     console.log(`⚠️ Perplexity indisponível, tentando busca web...`);
   }
 
-  // Fallback para busca web se Perplexity falhar
+  // Fallback para busca web desabilitado para V1
+  /*
   try {
     const webSearch = new WebSearch();
     const results = await webSearch.search(
@@ -184,6 +185,11 @@ Organize em uma lista completa e detalhada.`;
     console.log(`⚠️ Busca web também falhou, continuando sem tópicos referenciais`);
     return [];
   }
+  */
+
+  // V1: Return empty array as fallback
+  console.log('⚠️ Busca web desabilitada para V1, continuando sem tópicos referenciais');
+  return [];
 }
 
 /**
@@ -205,7 +211,7 @@ export async function fetchBookRecommendations(
 }> {
   console.log(`📚 Buscando recomendações de livros...`);
 
-  const model = getAvailableModel(['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo']);
+  const model = 'gpt-4o'; // Fallback model
 
   // Passo 1: Buscar recomendações via Perplexity
   const bookQuery = `Quais são os melhores livros universitários para aprender ${discipline} no nível ${educationLevel}?
@@ -373,18 +379,18 @@ Para cada livro, forneça:
       // Fallback para busca web apenas se Perplexity falhar
       for (const book of bookList.slice(0, 3)) {
         try {
-          // Apenas usar Web Search se realmente necessário
-          if (process.env.WEB_SEARCH_API_KEY) {
-            const summaryQuery = `"${book.title}" "${book.authors}" table of contents chapters outline`;
-            const webSearch = new WebSearch();
-            const results = await webSearch.search(summaryQuery, { maxResults: 2 });
+          // ARCHIVED: WebSearch não disponível na V1
+          // const summaryQuery = `"${book.title}" "${book.authors}" table of contents chapters outline`;
+          // const webSearch = new WebSearch();
+          // const results = await webSearch.search(summaryQuery, { maxResults: 2 });
+          // for (const result of results) {
+          //   if (result.snippet && result.snippet.length > 100) {
+          //     summaries.push(`[${book.title}] ${result.snippet}`);
+          //   }
+          // }
 
-            for (const result of results) {
-              if (result.snippet && result.snippet.length > 100) {
-                summaries.push(`[${book.title}] ${result.snippet}`);
-              }
-            }
-          }
+          // Fallback simples para V1
+          summaries.push(`[${book.title}] Livro recomendado pelos autores ${book.authors}`);
         } catch (webError) {
           console.log(`⚠️ Erro ao buscar sumário de ${book.title}`);
         }
@@ -413,7 +419,7 @@ export async function generateCompleteCourseStructure(
 ): Promise<any> {
   console.log(`🚀 Montando estrutura completa do curso...`);
 
-  const model = getAvailableModel(['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo']);
+  const model = 'gpt-4o'; // Fallback model
 
   // Preparar contexto completo
   const context = {
@@ -528,7 +534,7 @@ PERFIL DO ALUNO:
 
 Organize TUDO em uma estrutura curricular universitária completa.`;
 
-  const maxTokens = calculateSafeTokenLimit(model, 5000, 8000);
+  const maxTokens = 5000; // Fallback token limit
 
   const completion = await openai.chat.completions.create({
     model,
@@ -563,7 +569,7 @@ async function generateWithClustering(
 ): Promise<any> {
   console.log(`📊 Usando clustering para ${referenceTopics.length} tópicos...`);
 
-  const model = getAvailableModel(['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo']);
+  const model = 'gpt-4o'; // Fallback model
 
   // Passo 1: Agrupar tópicos em clusters temáticos
   const clusteringCompletion = await openai.chat.completions.create({
@@ -763,7 +769,7 @@ async function generatePrerequisitesForDiscipline(
     // Para disciplinas não mapeadas em nível universitário
     // Usar GPT para inferir pré-requisitos baseado no contexto
     try {
-      const model = getAvailableModel(['gpt-4o-mini', 'gpt-3.5-turbo']);
+      const model = 'gpt-4o-mini'; // Fallback model
       const completion = await openai.chat.completions.create({
         model,
         messages: [
@@ -817,7 +823,7 @@ export async function validateStructureByLevel(
 }> {
   console.log(`🔍 Validando nível ${level}...`);
 
-  const model = getAvailableModel(['gpt-4o-mini', 'gpt-3.5-turbo']);
+  const model = 'gpt-4o-mini'; // Fallback model
 
   // Filtrar módulos do nível especificado
   const levelModules = structure.modules?.filter((m: any) =>
@@ -883,42 +889,56 @@ Contexto completo do curso (apenas para referência):\n${JSON.stringify({
 export async function runCourseGenerationPipeline(
   userMessage: string,
   userProfile: any,
-  uploadedFiles?: any[]
+  uploadedFiles?: any[],
+  progressCallback?: (progress: number, step: number, message: string) => Promise<void>
 ): Promise<any> {
   console.log(`🚀 Iniciando pipeline completo de geração de curso...`);
 
+  const updateProgress = async (progress: number, step: number, message: string) => {
+    if (progressCallback) {
+      await progressCallback(progress, step, message);
+    }
+  };
+
   try {
-    // 1. Extrair assunto
+    // 1. Extrair assunto (0-15%)
+    await updateProgress(8, 1, 'Extraindo assunto principal...');
     const { subject, hasUsefulContext, context } = await extractSubject(userMessage);
 
-    // 2. Detectar disciplina acadêmica
+    // 2. Detectar disciplina acadêmica (15-25%)
+    await updateProgress(20, 1, 'Detectando disciplina acadêmica...');
     const { discipline, confidence, isAcademic } = await detectAcademicDiscipline(
       subject,
       userProfile,
       userMessage
     );
 
-    // 3. Buscar tópicos referenciais
+    // 3. Buscar tópicos referenciais (25-50%)
+    await updateProgress(30, 2, 'Buscando tópicos acadêmicos especializados...');
     const referenceTopics = await fetchReferenceTopics(
       subject,
       discipline,
       userProfile.educationLevel || 'undergraduate'
     );
+    await updateProgress(50, 2, 'Tópicos acadêmicos encontrados...');
 
-    // 4. Buscar e validar livros
+    // 4. Buscar e validar livros (50-60%)
+    await updateProgress(55, 2, 'Buscando recomendações bibliográficas...');
     const bookData = await fetchBookRecommendations(
       discipline,
       userProfile.educationLevel || 'undergraduate',
       referenceTopics
     );
 
-    // 5. Processar arquivos enviados (se houver)
+    // 5. Processar arquivos enviados (se houver) (60-65%)
+    await updateProgress(62, 2, 'Processando arquivos enviados...');
     let uploadedContent = '';
     if (uploadedFiles && uploadedFiles.length > 0) {
       uploadedContent = uploadedFiles.map(f => f.content || '').join('\n\n');
     }
 
-    // 6. Gerar estrutura completa
+    // 6. Gerar estrutura completa (65-85%)
+    await updateProgress(68, 3, 'Gerando estrutura curricular completa...');
     const structure = await generateCompleteCourseStructure(
       subject,
       discipline,
@@ -927,11 +947,14 @@ export async function runCourseGenerationPipeline(
       bookData,
       uploadedContent
     );
+    await updateProgress(85, 3, 'Estrutura curricular gerada...');
 
-    // 7. Validar por níveis
+    // 7. Validar por níveis (85-95%)
+    await updateProgress(87, 4, 'Validando qualidade acadêmica...');
     const beginnerValidation = await validateStructureByLevel(structure, 'beginner');
     const intermediateValidation = await validateStructureByLevel(structure, 'intermediate');
     const advancedValidation = await validateStructureByLevel(structure, 'advanced');
+    await updateProgress(95, 4, 'Validação de qualidade concluída...');
 
     // 8. Aplicar melhorias se necessário
     if (!beginnerValidation.isComplete || beginnerValidation.score < CONFIG.MIN_QUALITY_SCORE) {
@@ -957,6 +980,8 @@ export async function runCourseGenerationPipeline(
       }
     };
 
+    // 8. Finalizar (95-100%)
+    await updateProgress(100, 4, 'Curso gerado com sucesso!');
     console.log(`✅ Pipeline completo! Estrutura final gerada com sucesso.`);
 
     return structure;
