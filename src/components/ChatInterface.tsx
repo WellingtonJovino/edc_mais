@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, FileText, X } from 'lucide-react';
 import { ChatMessage, UploadedFile } from '@/types';
+import LoadingProgress from './LoadingProgress';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -11,6 +12,13 @@ interface ChatInterfaceProps {
   placeholder?: string;
   uploadedFiles?: UploadedFile[];
   onRemoveFile?: (fileId: string) => void;
+  // LoadingProgress props
+  loadingProgress?: {
+    currentStep: number;
+    progress: number;
+    currentActivity?: string;
+    isComplete?: boolean;
+  };
 }
 
 export default function ChatInterface({
@@ -19,7 +27,8 @@ export default function ChatInterface({
   isLoading = false,
   placeholder = 'Descreva sua área de estudo...',
   uploadedFiles = [],
-  onRemoveFile
+  onRemoveFile,
+  loadingProgress
 }: ChatInterfaceProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -106,13 +115,24 @@ export default function ChatInterface({
         )}
         
         {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-white border border-gray-200 rounded-lg px-4 py-2">
-              <div className="flex items-center space-x-2">
-                <Loader2 className="w-4 h-4 animate-spin text-primary-600" />
-                <span className="text-gray-600">Analisando sua solicitação...</span>
+          <div className="flex justify-center w-full my-6">
+            {loadingProgress ? (
+              <LoadingProgress
+                currentStep={loadingProgress.currentStep}
+                totalSteps={4}
+                progress={loadingProgress.progress}
+                currentActivity={loadingProgress.currentActivity}
+                isComplete={loadingProgress.isComplete}
+                estimatedTimeMs={120000} // 2 minutos estimado
+              />
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-lg px-4 py-2">
+                <div className="flex items-center space-x-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary-600" />
+                  <span className="text-gray-600">Analisando sua solicitação...</span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
         

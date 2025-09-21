@@ -43,6 +43,43 @@ export default function HomePage() {
   const [currentSyllabus, setCurrentSyllabus] = useState<SyllabusData | null>(null);
   const [isCreatingCourse, setIsCreatingCourse] = useState(false);
 
+  // Estado do loading progress
+  const [loadingProgress, setLoadingProgress] = useState({
+    currentStep: 1,
+    progress: 0,
+    currentActivity: '',
+    isComplete: false,
+  });
+
+  // Helper para simular progresso durante a geração
+  const simulateProgress = () => {
+    // Reset do progresso
+    setLoadingProgress({
+      currentStep: 1,
+      progress: 0,
+      currentActivity: 'Inicializando análise...',
+      isComplete: false,
+    });
+
+    const progressSteps = [
+      { step: 1, progress: 25, activity: 'Analisando objetivo de aprendizado...', delay: 2000 },
+      { step: 2, progress: 50, activity: 'Buscando referências acadêmicas...', delay: 4000 },
+      { step: 3, progress: 75, activity: 'Estruturando módulos pedagógicos...', delay: 6000 },
+      { step: 4, progress: 90, activity: 'Validando qualidade científica...', delay: 8000 },
+    ];
+
+    progressSteps.forEach(({ step, progress, activity, delay }) => {
+      setTimeout(() => {
+        setLoadingProgress(prev => ({
+          ...prev,
+          currentStep: step,
+          progress,
+          currentActivity: activity,
+        }));
+      }, delay);
+    });
+  };
+
   const handleSendMessage = async (message: string, files?: UploadedFile[]) => {
     // Detectar comando para gerar curso de pré-requisito
     const prerequisiteMatch = message.match(/gerar\s+curso\s+de\s+(.+)/i);
@@ -114,6 +151,7 @@ Como gostaria de proceder?`,
 
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
+    simulateProgress();
 
     try {
       // Criar mensagem especializada para pré-requisito
@@ -200,7 +238,18 @@ Tente novamente ou especifique o nome de forma diferente.
 
       setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
+      // Finalizar progresso
+      setLoadingProgress(prev => ({
+        ...prev,
+        currentStep: 4,
+        progress: 100,
+        currentActivity: 'Curso de pré-requisito gerado!',
+        isComplete: true,
+      }));
+
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 1000);
     }
   };
 
@@ -236,6 +285,7 @@ Perfil de Aprendizado:
 
     setMessages([userMessage]);
     setIsLoading(true);
+    simulateProgress();
 
     try {
       const response = await fetch('/api/analyze', {
@@ -345,8 +395,19 @@ Quando estiver satisfeito, clique em "Gerar Curso" para criar as aulas!`;
 
       setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
-      setPendingMessage('');
+      // Finalizar progresso
+      setLoadingProgress(prev => ({
+        ...prev,
+        currentStep: 4,
+        progress: 100,
+        currentActivity: 'Curso gerado com sucesso!',
+        isComplete: true,
+      }));
+
+      setTimeout(() => {
+        setIsLoading(false);
+        setPendingMessage('');
+      }, 1000);
     }
   };
 
@@ -504,6 +565,7 @@ Quando estiver satisfeito, clique em "Gerar Curso" para criar as aulas!`;
                   placeholder="Ex: Quero estudar Mecânica Vetorial para Engenharia..."
                   uploadedFiles={uploadedFiles}
                   onRemoveFile={removeUploadedFile}
+                  loadingProgress={isLoading ? loadingProgress : undefined}
                 />
               </div>
             </div>
