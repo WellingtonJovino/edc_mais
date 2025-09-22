@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Brain, Search, BookOpen, Sparkles, CheckCircle } from 'lucide-react';
+import { Brain, Search, BookOpen, Sparkles, CheckCircle, FileText } from 'lucide-react';
 
 export interface LoadingStep {
   id: string;
@@ -26,6 +26,12 @@ const defaultSteps: LoadingStep[] = [
     label: 'Analisando objetivo',
     icon: Brain,
     description: 'Processando sua solicitação e identificando o domínio de conhecimento'
+  },
+  {
+    id: 'extracting',
+    label: 'Extraindo documentos',
+    icon: FileText,
+    description: 'Processando arquivos enviados e extraindo conteúdo relevante'
   },
   {
     id: 'researching',

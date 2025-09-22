@@ -99,7 +99,7 @@ export default function HomePage() {
 
   const completeProgress = () => {
     setLoadingProgress({
-      currentStep: 4,
+      currentStep: 5,
       progress: 100,
       isComplete: true,
     });
@@ -136,10 +136,16 @@ export default function HomePage() {
       role: 'user',
       content: message,
       timestamp: new Date().toISOString(),
+      attachedFiles: files && files.length > 0 ? files : undefined,
     };
 
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
+
+    // Clear uploaded files after sending
+    if (files && files.length > 0) {
+      setUploadedFiles([]);
+    }
 
     try {
       // Simular resposta da IA para modificações
@@ -320,6 +326,7 @@ Perfil de Aprendizado:
 • Experiência prévia: ${profile.background || 'Não informado'}
 • Objetivos específicos: ${profile.specificGoals || 'Não informado'}`,
       timestamp: new Date().toISOString(),
+      attachedFiles: uploadedFiles.length > 0 ? uploadedFiles : undefined,
     };
 
     setMessages([userMessage]);

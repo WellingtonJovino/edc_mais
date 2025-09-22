@@ -1,6 +1,14 @@
 import OpenAI from 'openai';
 // import { getAvailableModel, calculateSafeTokenLimit, estimateCost } from './model-utils'; // ARCHIVED
 import { searchRequiredTopics } from './perplexity';
+import {
+  comprehensiveCurriculumSearch,
+  validateCourseCompleteness,
+  searchUniversitySyllabi,
+  searchIndustryStandards,
+  searchPracticalApplications,
+  openaiWebSearch
+} from './openai-web-search';
 // import { WebSearch } from './websearch'; // ARCHIVED
 
 const openai = new OpenAI({
@@ -134,16 +142,22 @@ Contexto completo: ${fullMessage}`
 }
 
 /**
- * Busca tópicos referenciais via Perplexity/RAG
+ * Busca tópicos referenciais via Perplexity + OpenAI Web Search (Híbrido V2)
  */
 export async function fetchReferenceTopics(
   subject: string,
   discipline: string,
-  educationLevel: string
+  educationLevel: string,
+  academicDomain?: keyof typeof DOMAIN_CONFIGS | 'general'
 ): Promise<string[]> {
-  console.log(`📚 Buscando tópicos acadêmicos recomendados...`);
+  console.log(`📚 Buscando tópicos acadêmicos com sistema híbrido (Perplexity + Web Search)...`);
 
-  const searchQuery = `Extraia dos melhores sites que ensinam ${subject}, para ${educationLevel}, da disciplina: ${discipline}.
+  const allTopics: string[] = [];
+
+  // 1. Busca via Perplexity (mantém funcionalidade original)
+  console.log(`🔍 Fase 1: Buscando via Perplexity...`);
+  try {
+    const searchQuery = `Extraia dos melhores sites que ensinam ${subject}, para ${educationLevel}, da disciplina: ${discipline}.
 Liste TODOS os módulos, tópicos e sub-tópicos ensinados, organizados do nível iniciante → intermediário → avançado.
 Inclua:
 - Todos os capítulos e seções de cursos universitários
@@ -152,44 +166,338 @@ Inclua:
 - Exercícios e aplicações práticas
 Organize em uma lista completa e detalhada.`;
 
-  try {
     const perplexityResponse = await searchRequiredTopics(subject, educationLevel, searchQuery);
 
     if (perplexityResponse && perplexityResponse.length > 0) {
+      allTopics.push(...perplexityResponse);
       console.log(`✅ ${perplexityResponse.length} tópicos encontrados via Perplexity`);
-      return perplexityResponse;
     }
   } catch (error) {
-    console.log(`⚠️ Perplexity indisponível, tentando busca web...`);
+    console.log(`⚠️ Perplexity indisponível:`, error);
   }
 
-  // Fallback para busca web desabilitado para V1
-  /*
+  // 2. Busca abrangente via OpenAI Web Search com configurações do domínio (novo sistema V2)
+  console.log(`🌐 Fase 2: Buscando via OpenAI Web Search...`);
   try {
-    const webSearch = new WebSearch();
-    const results = await webSearch.search(
-      `${discipline} curriculum topics syllabus university course outline`,
-      { maxResults: 10 }
+    // Usar configurações específicas do domínio se disponível
+    let searchConfig = undefined;
+    if (academicDomain && academicDomain !== 'general') {
+      searchConfig = await generateDomainSpecificSearch(discipline, subject, educationLevel);
+      console.log(`🎓 Usando busca especializada para domínio: ${academicDomain}`);
+      console.log(`🔍 Domínios de busca: ${searchConfig.domains.join(', ')}`);
+      console.log(`📚 Termos adicionais: ${searchConfig.additionalTerms.join(', ')}`);
+    }
+
+    const webSearchResults = await comprehensiveCurriculumSearch(
+      subject,
+      discipline,
+      educationLevel,
+      undefined, // userProfile
+      searchConfig // Configurações específicas do domínio
     );
 
-    const topics: string[] = [];
-    for (const result of results) {
-      if (result.snippet) {
-        topics.push(result.snippet);
-      }
-    }
+    // Combinar todos os tópicos das diferentes fontes
+    const webTopics = [
+      ...webSearchResults.generalTopics,
+      ...webSearchResults.academicSyllabi,
+      ...webSearchResults.industryStandards,
+      ...webSearchResults.practicalApplications
+    ];
 
-    console.log(`✅ ${topics.length} tópicos encontrados via busca web`);
-    return topics;
+    if (webTopics.length > 0) {
+      allTopics.push(...webTopics);
+      console.log(`✅ ${webTopics.length} tópicos encontrados via Web Search`);
+      console.log(`📊 Score de completude: ${(webSearchResults.completenessScore * 100).toFixed(1)}%`);
+    }
   } catch (error) {
-    console.log(`⚠️ Busca web também falhou, continuando sem tópicos referenciais`);
+    console.log(`⚠️ Web Search indisponível:`, error);
+  }
+
+  // 3. Busca adicional direcionada se poucos tópicos foram encontrados
+  if (allTopics.length < 20) {
+    console.log(`📈 Fase 3: Busca adicional direcionada (poucos tópicos encontrados)...`);
+    try {
+      const additionalResults = await Promise.all([
+        // Busca específica por ementas
+        searchUniversitySyllabi(subject, educationLevel),
+        // Busca por aplicações práticas
+        searchPracticalApplications(subject),
+        // Busca geral mais específica
+        openaiWebSearch(
+          `"${discipline}" essential topics must learn ${educationLevel} comprehensive curriculum`,
+          { domain_category: 'all_edu', mode: 'agentic_search' }
+        )
+      ]);
+
+      const additionalTopics = additionalResults.flatMap(result =>
+        result.content.split('\n').filter(line => line.trim().length > 10)
+      );
+
+      if (additionalTopics.length > 0) {
+        allTopics.push(...additionalTopics);
+        console.log(`✅ ${additionalTopics.length} tópicos adicionais encontrados`);
+      }
+    } catch (error) {
+      console.log(`⚠️ Busca adicional falhou:`, error);
+    }
+  }
+
+  // 4. Processamento e limpeza dos tópicos
+  const uniqueTopics = removeDuplicateTopics(allTopics);
+  const cleanedTopics = cleanAndValidateTopics(uniqueTopics);
+
+  console.log(`🎯 Total: ${cleanedTopics.length} tópicos únicos encontrados (${allTopics.length} antes da limpeza)`);
+
+  // 5. Verificar se há tópicos suficientes para o domínio
+  const minTopicsForDomain = academicDomain && academicDomain !== 'general' ? 30 : 20;
+
+  if (cleanedTopics.length < minTopicsForDomain) {
+    console.log(`📈 Poucos tópicos encontrados (${cleanedTopics.length}), gerando tópicos adicionais via GPT...`);
+    const additionalTopics = await generateAdditionalTopicsForDomain(
+      subject,
+      discipline,
+      educationLevel,
+      academicDomain || 'general',
+      minTopicsForDomain - cleanedTopics.length
+    );
+    cleanedTopics.push(...additionalTopics);
+    console.log(`✅ ${additionalTopics.length} tópicos adicionais gerados via GPT`);
+  }
+
+  // 6. Fallback se ainda nada foi encontrado
+  if (cleanedTopics.length === 0) {
+    console.log(`⚠️ Nenhum tópico encontrado, gerando tópicos básicos via GPT...`);
+    return await generateFallbackTopics(subject, discipline, educationLevel);
+  }
+
+  return cleanedTopics;
+}
+
+/**
+ * Gera tópicos adicionais específicos para o domínio acadêmico
+ */
+async function generateAdditionalTopicsForDomain(
+  subject: string,
+  discipline: string,
+  educationLevel: string,
+  academicDomain: keyof typeof DOMAIN_CONFIGS | 'general',
+  numTopics: number
+): Promise<string[]> {
+  console.log(`🧠 Gerando ${numTopics} tópicos adicionais para domínio ${academicDomain}...`);
+
+  const model = 'gpt-4o-mini';
+
+  // Usar configurações específicas do domínio se disponível
+  let domainContext = '';
+  if (academicDomain && academicDomain !== 'general') {
+    const config = DOMAIN_CONFIGS[academicDomain];
+    domainContext = `
+Contexto do domínio ${config.name}:
+- Termos importantes: ${config.additionalSearchTerms.join(', ')}
+- Competências necessárias: ${config.skillFocus.join(', ')}
+- Tem padrões industriais: ${config.industryStandards ? 'Sim' : 'Não'}
+- Tem trabalho prático: ${config.labWork ? 'Sim' : 'Não'}
+- Balanceamento teoria/prática: ${Math.round(config.moduleStructure.theory * 100)}% teoria, ${Math.round(config.moduleStructure.practice * 100)}% prática`;
+  }
+
+  const completion = await openai.chat.completions.create({
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: `Você é um especialista acadêmico em ${discipline}.
+
+Gere uma lista de ${numTopics} tópicos específicos e avançados para um curso de ${discipline} nível ${educationLevel}.
+
+${domainContext}
+
+Retorne APENAS uma lista em JSON:
+{
+  "topics": [
+    "Tópico específico 1",
+    "Tópico específico 2",
+    ...
+  ]
+}
+
+IMPORTANTE:
+- Tópicos devem ser específicos e não genéricos
+- Incluir aspectos práticos, normas e aplicações específicas da área
+- Focar em competências e habilidades específicas do domínio
+- Evitar tópicos muito básicos`
+      },
+      {
+        role: 'user',
+        content: `Disciplina: ${discipline}
+Assunto: ${subject}
+Nível: ${educationLevel}
+Domínio: ${academicDomain}
+
+Gere ${numTopics} tópicos específicos adicionais que um estudante precisa dominar nesta área.`
+      }
+    ],
+    max_tokens: 2000,
+    temperature: 0.7,
+    response_format: { type: "json_object" }
+  });
+
+  try {
+    const result = JSON.parse(completion.choices[0]?.message?.content || '{"topics": []}');
+    return result.topics || [];
+  } catch (error) {
+    console.error('❌ Erro ao parsear tópicos adicionais do domínio:', error);
     return [];
   }
-  */
+}
 
-  // V1: Return empty array as fallback
-  console.log('⚠️ Busca web desabilitada para V1, continuando sem tópicos referenciais');
-  return [];
+/**
+ * Remove tópicos duplicados usando similaridade semântica
+ */
+function removeDuplicateTopics(topics: string[]): string[] {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+
+  for (const topic of topics) {
+    const normalized = topic.toLowerCase().trim();
+    if (normalized.length < 5) continue;
+
+    // Verificar duplicatas exatas
+    if (seen.has(normalized)) continue;
+
+    // Verificar similaridade com tópicos já adicionados
+    const isDuplicate = unique.some(existingTopic => {
+      const existing = existingTopic.toLowerCase();
+      return (
+        normalized.includes(existing) ||
+        existing.includes(normalized) ||
+        calculateStringSimilarity(normalized, existing) > 0.8
+      );
+    });
+
+    if (!isDuplicate) {
+      unique.push(topic.trim());
+      seen.add(normalized);
+    }
+  }
+
+  return unique;
+}
+
+/**
+ * Limpa e valida tópicos removendo conteúdo inválido
+ */
+function cleanAndValidateTopics(topics: string[]): string[] {
+  return topics
+    .map(topic => topic.trim())
+    .filter(topic => {
+      // Filtros de qualidade
+      if (topic.length < 5 || topic.length > 200) return false;
+      if (/^[\d.\-\s]+$/.test(topic)) return false; // Apenas números/pontuação
+      if (topic.includes('http')) return false; // URLs
+      if (topic.match(/^[^a-zA-Z]*$/)) return false; // Sem letras
+
+      // Remover marcadores de lista
+      return true;
+    })
+    .map(topic => {
+      // Limpar marcadores comuns
+      return topic
+        .replace(/^[-•*\d.\s]+/, '')
+        .replace(/^\w+\)?\s*/, '') // Remove "a)" "1)" etc
+        .trim();
+    })
+    .filter(topic => topic.length > 5);
+}
+
+/**
+ * Calcula similaridade entre duas strings
+ */
+function calculateStringSimilarity(str1: string, str2: string): number {
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+
+  if (longer.length === 0) return 1.0;
+
+  const editDistance = levenshteinDistance(longer, shorter);
+  return (longer.length - editDistance) / longer.length;
+}
+
+/**
+ * Calcula distância de Levenshtein entre duas strings
+ */
+function levenshteinDistance(str1: string, str2: string): number {
+  const matrix = [];
+
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+
+  return matrix[str2.length][str1.length];
+}
+
+/**
+ * Gera tópicos básicos via GPT como fallback
+ */
+async function generateFallbackTopics(
+  subject: string,
+  discipline: string,
+  educationLevel: string
+): Promise<string[]> {
+  console.log(`🆘 Gerando tópicos de fallback via GPT para ${discipline}`);
+
+  const model = 'gpt-4o-mini';
+
+  const completion = await openai.chat.completions.create({
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: `Gere uma lista de 30-50 tópicos essenciais para um curso de ${discipline} no nível ${educationLevel}.
+
+Retorne apenas a lista de tópicos, um por linha, sem numeração ou marcadores.
+Organize do básico ao avançado.
+Inclua tópicos teóricos e práticos.
+Foque em conceitos fundamentais da área.`
+      },
+      {
+        role: 'user',
+        content: `Discipline: ${discipline}
+Subject: ${subject}
+Level: ${educationLevel}
+
+Gere tópicos essenciais para esta disciplina.`
+      }
+    ],
+    max_tokens: 1500,
+    temperature: 0.3
+  });
+
+  const content = completion.choices[0]?.message?.content || '';
+  const topics = content
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 5 && !line.match(/^[\d.\-\s]+$/));
+
+  console.log(`✅ ${topics.length} tópicos de fallback gerados`);
+  return topics;
 }
 
 /**
@@ -407,6 +715,202 @@ Para cada livro, forneça:
 }
 
 /**
+ * Analisa documentos enviados via OpenAI Assistant
+ */
+async function analyzeUploadedDocuments(
+  uploadedFiles: any[],
+  subject: string,
+  discipline: string
+): Promise<{ topics: string[]; analysis: string }> {
+  console.log(`🤖 Analisando documentos com OpenAI Assistant...`);
+
+  const topics: string[] = [];
+  let analysis = '';
+
+  for (const file of uploadedFiles) {
+    try {
+      // Se o arquivo tem assistantId, usar para fazer query
+      if (file.assistantId && file.vectorStoreId) {
+        console.log(`🔍 Consultando Assistant para ${file.name}...`);
+
+        const queryResult = await queryOpenAIAssistant(
+          file.assistantId,
+          `Analise este documento sobre ${subject}/${discipline} e extraia:
+1. Todos os tópicos principais e subtópicos mencionados
+2. Conceitos fundamentais abordados
+3. Como estes tópicos se relacionam com ${discipline}
+
+Liste os tópicos de forma estruturada e detalhada.`,
+          file.vectorStoreId
+        );
+
+        if (queryResult.topics) {
+          topics.push(...queryResult.topics);
+          analysis += `[${file.name}] ${queryResult.analysis}\n\n`;
+        }
+      } else {
+        // Fallback: análise simples do conteúdo extraído
+        console.log(`📄 Analisando conteúdo textual de ${file.name}...`);
+        const content = file.content || file.rawText || '';
+
+        if (content.length > 100) {
+          const simpleAnalysis = await extractTopicsFromText(content, subject, discipline);
+          topics.push(...simpleAnalysis.topics);
+          analysis += `[${file.name}] ${simpleAnalysis.analysis}\n\n`;
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Erro ao analisar ${file.name}:`, error);
+    }
+  }
+
+  console.log(`✅ Análise concluída: ${topics.length} tópicos extraídos`);
+  return { topics: [...new Set(topics)], analysis }; // Remove duplicatas
+}
+
+/**
+ * Consulta OpenAI Assistant com File Search
+ */
+async function queryOpenAIAssistant(
+  assistantId: string,
+  query: string,
+  vectorStoreId?: string
+): Promise<{ topics: string[]; analysis: string }> {
+  try {
+    console.log(`🤖 Criando thread com Assistant ${assistantId}...`);
+
+    // Criar thread
+    const thread = await openai.beta.threads.create({
+      tool_resources: vectorStoreId ? {
+        file_search: {
+          vector_store_ids: [vectorStoreId]
+        }
+      } : undefined
+    });
+
+    // Adicionar mensagem
+    await openai.beta.threads.messages.create(thread.id, {
+      role: 'user',
+      content: query
+    });
+
+    // Executar
+    const run = await openai.beta.threads.runs.create(thread.id, {
+      assistant_id: assistantId
+    });
+
+    // Aguardar conclusão
+    let runStatus = await openai.beta.threads.runs.retrieve(run.id, { thread_id: thread.id });
+
+    while (runStatus.status === 'in_progress' || runStatus.status === 'queued') {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      runStatus = await openai.beta.threads.runs.retrieve(run.id, { thread_id: thread.id });
+    }
+
+    if (runStatus.status === 'completed') {
+      // Recuperar mensagens
+      const messages = await openai.beta.threads.messages.list(thread.id);
+      const assistantMessage = messages.data.find(msg => msg.role === 'assistant');
+
+      if (assistantMessage && assistantMessage.content[0]?.type === 'text') {
+        const responseText = assistantMessage.content[0].text.value;
+
+        // Extrair tópicos do texto de resposta
+        const extractedTopics = await extractTopicsFromAssistantResponse(responseText);
+
+        return {
+          topics: extractedTopics,
+          analysis: responseText
+        };
+      }
+    }
+
+    throw new Error(`Assistant run failed with status: ${runStatus.status}`);
+
+  } catch (error) {
+    console.error('❌ Erro ao consultar Assistant:', error);
+    throw error;
+  }
+}
+
+/**
+ * Extrai tópicos do texto usando GPT
+ */
+async function extractTopicsFromText(
+  content: string,
+  subject: string,
+  discipline: string
+): Promise<{ topics: string[]; analysis: string }> {
+  console.log(`📝 Extraindo tópicos do texto (${content.length} chars)...`);
+
+  const model = 'gpt-4o-mini';
+
+  const completion = await openai.chat.completions.create({
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: `Analise o texto e extraia todos os tópicos relacionados a ${subject}/${discipline}.
+
+Retorne em JSON:
+{
+  "topics": ["tópico 1", "tópico 2", ...],
+  "analysis": "resumo da análise"
+}
+
+Foque em conceitos, teorias, métodos e aplicações mencionados.`
+      },
+      {
+        role: 'user',
+        content: content.substring(0, 4000) // Limitar tamanho
+      }
+    ],
+    max_tokens: 1000,
+    temperature: 0.3,
+    response_format: { type: "json_object" }
+  });
+
+  const result = JSON.parse(completion.choices[0]?.message?.content || '{"topics": [], "analysis": ""}');
+  return result;
+}
+
+/**
+ * Extrai tópicos da resposta do Assistant
+ */
+async function extractTopicsFromAssistantResponse(responseText: string): Promise<string[]> {
+  console.log(`🔍 Extraindo tópicos da resposta do Assistant...`);
+
+  const model = 'gpt-4o-mini';
+
+  const completion = await openai.chat.completions.create({
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: `Extraia uma lista limpa de tópicos da resposta fornecida.
+
+Retorne em JSON:
+{
+  "topics": ["tópico 1", "tópico 2", ...]
+}
+
+Inclua apenas os tópicos principais mencionados, removendo duplicatas.`
+      },
+      {
+        role: 'user',
+        content: responseText
+      }
+    ],
+    max_tokens: 800,
+    temperature: 0.1,
+    response_format: { type: "json_object" }
+  });
+
+  const result = JSON.parse(completion.choices[0]?.message?.content || '{"topics": []}');
+  return result.topics || [];
+}
+
+/**
  * Monta a estrutura completa do curso com todos os dados coletados
  */
 export async function generateCompleteCourseStructure(
@@ -415,7 +919,8 @@ export async function generateCompleteCourseStructure(
   userProfile: any,
   referenceTopics: string[],
   bookData: any,
-  uploadedContent?: string
+  uploadedContent?: string,
+  extractedDocumentTopics?: string[]
 ): Promise<any> {
   console.log(`🚀 Montando estrutura completa do curso...`);
 
@@ -429,20 +934,29 @@ export async function generateCompleteCourseStructure(
     referenceTopicsCount: referenceTopics.length,
     booksCount: bookData.books.length,
     summariesCount: bookData.summaries.length,
-    hasUploadedContent: !!uploadedContent
+    hasUploadedContent: !!uploadedContent,
+    documentTopicsCount: extractedDocumentTopics?.length || 0
   };
 
   console.log(`📊 Contexto:`, context);
 
+  // Combinar tópicos de documentos com tópicos de referência
+  const allTopics = [...referenceTopics];
+  if (extractedDocumentTopics && extractedDocumentTopics.length > 0) {
+    console.log(`📚 Integrando ${extractedDocumentTopics.length} tópicos dos documentos enviados...`);
+    allTopics.push(...extractedDocumentTopics);
+  }
+
   // Se temos muitos tópicos (>30), usar abordagem de clustering
-  if (referenceTopics.length > CONFIG.MIN_TOPICS_FOR_CLUSTERING) {
+  if (allTopics.length > CONFIG.MIN_TOPICS_FOR_CLUSTERING) {
     return await generateWithClustering(
       subject,
       discipline,
       userProfile,
-      referenceTopics,
+      allTopics,
       bookData,
-      uploadedContent
+      uploadedContent,
+      extractedDocumentTopics
     );
   }
 
@@ -455,7 +969,8 @@ DADOS DISPONÍVEIS:
 1. Tópicos referenciais de sites educacionais (${referenceTopics.length} itens)
 2. Livros recomendados (${bookData.books.length} livros)
 3. Sumários de livros (${bookData.summaries.length} sumários)
-${uploadedContent ? '4. Material enviado pelo usuário' : ''}
+${extractedDocumentTopics && extractedDocumentTopics.length > 0 ? `4. Tópicos extraídos de documentos enviados (${extractedDocumentTopics.length} itens)` : ''}
+${uploadedContent ? `${extractedDocumentTopics ? '5' : '4'}. Material enviado pelo usuário` : ''}
 
 REQUISITOS OBRIGATÓRIOS:
 - Preservar TODOS os tópicos fornecidos (não deletar nenhum)
@@ -518,6 +1033,11 @@ ESTRUTURA JSON OBRIGATÓRIA:
 TÓPICOS REFERENCIAIS (TODOS devem ser incluídos):
 ${referenceTopics.map((t, i) => `${i + 1}. ${t}`).join('\n')}
 
+${extractedDocumentTopics && extractedDocumentTopics.length > 0 ? `
+TÓPICOS DOS DOCUMENTOS ENVIADOS (dar prioridade alta):
+${extractedDocumentTopics.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+` : ''}
+
 LIVROS RECOMENDADOS:
 ${bookData.books.map((b: any) => `- ${b.title} (${b.authors}, ${b.year})`).join('\n')}
 
@@ -532,7 +1052,9 @@ PERFIL DO ALUNO:
 - Tempo disponível: ${userProfile.timeAvailable}
 - Background: ${userProfile.background || 'não informado'}
 
-Organize TUDO em uma estrutura curricular universitária completa.`;
+Organize TUDO em uma estrutura curricular universitária completa.
+${extractedDocumentTopics && extractedDocumentTopics.length > 0 ? `
+IMPORTANTE: Dê prioridade especial aos tópicos extraídos dos documentos enviados pelo usuário, integrando-os de forma proeminente na estrutura do curso.` : ''}`;
 
   const maxTokens = 5000; // Fallback token limit
 
@@ -547,7 +1069,58 @@ Organize TUDO em uma estrutura curricular universitária completa.`;
     response_format: { type: "json_object" }
   });
 
-  const structure = JSON.parse(completion.choices[0]?.message?.content || '{}');
+  // Parse com tratamento de erro
+  let structure;
+  try {
+    const rawContent = completion.choices[0]?.message?.content || '{}';
+    console.log(`📝 Raw JSON response length: ${rawContent.length} characters`);
+
+    // Tentar limpar JSON malformado
+    let cleanedContent = rawContent;
+
+    // Remover possíveis caracteres de controle
+    cleanedContent = cleanedContent.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+    // Se o JSON estiver incompleto, tentar completar
+    if (!cleanedContent.trim().endsWith('}')) {
+      console.log('⚠️ JSON aparenta estar incompleto, tentando completar...');
+      // Contar chaves abertas vs fechadas
+      const openBraces = (cleanedContent.match(/{/g) || []).length;
+      const closeBraces = (cleanedContent.match(/}/g) || []).length;
+      const missingBraces = openBraces - closeBraces;
+
+      if (missingBraces > 0) {
+        cleanedContent += '}'.repeat(missingBraces);
+        console.log(`🔧 Adicionadas ${missingBraces} chaves de fechamento`);
+      }
+    }
+
+    structure = JSON.parse(cleanedContent);
+
+  } catch (jsonError) {
+    console.error('❌ Erro ao parsear JSON:', jsonError);
+    console.log('📄 Conteúdo problemático (primeiros 500 chars):',
+      completion.choices[0]?.message?.content?.substring(0, 500));
+
+    // Fallback: estrutura básica
+    structure = {
+      title: `Curso de ${discipline}`,
+      description: `Curso estruturado para aprender ${discipline}`,
+      level: userProfile.educationLevel || 'undergraduate',
+      totalHours: 80,
+      modules: [],
+      prerequisites: [],
+      references: [],
+      metadata: {
+        topicsPreserved: false,
+        totalTopics: allTopics.length,
+        referenceTopics: referenceTopics.length,
+        documentTopics: extractedDocumentTopics?.length || 0,
+        sources: ['fallback'],
+        error: 'JSON parsing failed'
+      }
+    };
+  }
 
   console.log(`✅ Estrutura gerada: ${structure.modules?.length || 0} módulos, ${
     structure.modules?.reduce((sum: number, m: any) => sum + (m.topics?.length || 0), 0) || 0
@@ -563,11 +1136,12 @@ async function generateWithClustering(
   subject: string,
   discipline: string,
   userProfile: any,
-  referenceTopics: string[],
+  allTopics: string[],
   bookData: any,
-  uploadedContent?: string
+  uploadedContent?: string,
+  extractedDocumentTopics?: string[]
 ): Promise<any> {
-  console.log(`📊 Usando clustering para ${referenceTopics.length} tópicos...`);
+  console.log(`📊 Usando clustering para ${allTopics.length} tópicos...`);
 
   const model = 'gpt-4o'; // Fallback model
 
@@ -598,8 +1172,8 @@ Regras:
       },
       {
         role: 'user',
-        content: `Agrupe estes ${referenceTopics.length} tópicos:\n${
-          referenceTopics.map((t, i) => `${i}: ${t.substring(0, 100)}`).join('\n')
+        content: `Agrupe estes ${allTopics.length} tópicos:\n${
+          allTopics.map((t, i) => `${i}: ${t.substring(0, 100)}`).join('\n')
         }`
       }
     ],
@@ -608,7 +1182,14 @@ Regras:
     response_format: { type: "json_object" }
   });
 
-  const clusters = JSON.parse(clusteringCompletion.choices[0]?.message?.content || '{"clusters": []}');
+  // Parse clusters com tratamento de erro
+  let clusters;
+  try {
+    clusters = JSON.parse(clusteringCompletion.choices[0]?.message?.content || '{"clusters": []}');
+  } catch (error) {
+    console.error('❌ Erro ao parsear clusters JSON:', error);
+    clusters = { clusters: [] };
+  }
 
   console.log(`✅ ${clusters.clusters?.length || 0} clusters criados`);
 
@@ -616,7 +1197,7 @@ Regras:
   const modules = [];
 
   for (const cluster of clusters.clusters || []) {
-    const clusterTopics = cluster.topics.map((i: number) => referenceTopics[i]).filter(Boolean);
+    const clusterTopics = cluster.topics.map((i: number) => allTopics[i]).filter(Boolean);
 
     if (clusterTopics.length === 0) continue;
 
@@ -658,7 +1239,21 @@ Retorne em JSON:
       response_format: { type: "json_object" }
     });
 
-    const module = JSON.parse(moduleCompletion.choices[0]?.message?.content || '{}');
+    // Parse módulo com tratamento de erro
+    let module;
+    try {
+      module = JSON.parse(moduleCompletion.choices[0]?.message?.content || '{}');
+    } catch (error) {
+      console.error(`❌ Erro ao parsear módulo ${cluster.name}:`, error);
+      module = {
+        id: `mod_${modules.length + 1}`,
+        title: cluster.name,
+        description: `Módulo sobre ${cluster.name}`,
+        level: 'beginner',
+        estimatedHours: 8,
+        topics: []
+      };
+    }
     modules.push(module);
   }
 
@@ -676,8 +1271,10 @@ Retorne em JSON:
     references: bookData.books,
     metadata: {
       topicsPreserved: true,
-      totalTopics: referenceTopics.length,
-      sources: ['perplexity', 'books', 'gpt']
+      totalTopics: allTopics.length,
+      referenceTopics: allTopics.length - (extractedDocumentTopics?.length || 0),
+      documentTopics: extractedDocumentTopics?.length || 0,
+      sources: ['perplexity', 'books', 'gpt', ...(extractedDocumentTopics?.length ? ['documents'] : [])]
     }
   };
 
@@ -913,14 +1510,27 @@ export async function runCourseGenerationPipeline(
       userMessage
     );
 
-    // 3. Buscar tópicos referenciais (25-50%)
+    // 2.1. Detectar domínio acadêmico e aplicar configurações específicas
+    const academicDomain = detectAcademicDomain(discipline, subject);
+    const domainConfig = applyDomainConfiguration(academicDomain, CONFIG);
+    console.log(`🎓 Domínio detectado: ${academicDomain} (${domainConfig.DOMAIN_NAME || 'Geral'})`);
+    console.log(`📊 Configurações do domínio: ${domainConfig.TARGET_MODULES_MIN}-${domainConfig.TARGET_MODULES_MAX} módulos`);
+
+    // Atualizar configurações globais com configurações do domínio
+    Object.assign(CONFIG, domainConfig);
+
+    // 3. Buscar tópicos referenciais com configurações do domínio (25-50%)
     await updateProgress(30, 2, 'Buscando tópicos acadêmicos especializados...');
     const referenceTopics = await fetchReferenceTopics(
       subject,
       discipline,
-      userProfile.educationLevel || 'undergraduate'
+      userProfile.educationLevel || 'undergraduate',
+      academicDomain // Passar domínio para busca especializada
     );
     await updateProgress(50, 2, 'Tópicos acadêmicos encontrados...');
+
+    // Combinar todos os tópicos para uso no pipeline
+    let allTopics = [...referenceTopics];
 
     // 4. Buscar e validar livros (50-60%)
     await updateProgress(55, 2, 'Buscando recomendações bibliográficas...');
@@ -930,22 +1540,49 @@ export async function runCourseGenerationPipeline(
       referenceTopics
     );
 
-    // 5. Processar arquivos enviados (se houver) (60-65%)
+    // 5. Processar arquivos enviados (se houver) (60-70%)
     await updateProgress(62, 2, 'Processando arquivos enviados...');
     let uploadedContent = '';
-    if (uploadedFiles && uploadedFiles.length > 0) {
-      uploadedContent = uploadedFiles.map(f => f.content || '').join('\n\n');
-    }
+    let extractedDocumentTopics: string[] = [];
 
-    // 6. Gerar estrutura completa (65-85%)
-    await updateProgress(68, 3, 'Gerando estrutura curricular completa...');
+    if (uploadedFiles && uploadedFiles.length > 0) {
+      console.log(`📁 Processando ${uploadedFiles.length} arquivo(s) enviado(s)...`);
+      uploadedContent = uploadedFiles.map(f => f.content || '').join('\n\n');
+
+      // Analisar arquivos via OpenAI Assistant se disponível
+      await updateProgress(65, 2, 'Analisando conteúdo dos documentos...');
+      try {
+        console.log(`📚 Iniciando análise de ${uploadedFiles.length} arquivo(s) enviado(s)...`);
+        const documentAnalysis = await analyzeUploadedDocuments(uploadedFiles, subject, discipline);
+        if (documentAnalysis.topics.length > 0) {
+          extractedDocumentTopics = documentAnalysis.topics;
+          console.log(`📊 ${extractedDocumentTopics.length} tópicos extraídos dos documentos`);
+          console.log(`🔗 Integrando tópicos dos documentos com tópicos referenciais...`);
+
+          // Adicionar tópicos dos documentos aos tópicos totais
+          allTopics.push(...extractedDocumentTopics);
+          console.log(`✅ Total de tópicos agora: ${allTopics.length} (${referenceTopics.length} referenciais + ${extractedDocumentTopics.length} dos documentos)`);
+        } else {
+          console.log(`⚠️ Nenhum tópico foi extraído dos documentos`);
+        }
+      } catch (error) {
+        console.error(`❌ Erro ao analisar documentos: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      }
+    } else {
+      console.log(`📝 Nenhum arquivo enviado para análise`);
+    }
+    await updateProgress(70, 2, 'Análise de documentos concluída...');
+
+    // 6. Gerar estrutura completa (70-85%)
+    await updateProgress(72, 3, 'Gerando estrutura curricular completa...');
     const structure = await generateCompleteCourseStructure(
       subject,
       discipline,
       userProfile,
       referenceTopics,
       bookData,
-      uploadedContent
+      uploadedContent,
+      extractedDocumentTopics
     );
     await updateProgress(85, 3, 'Estrutura curricular gerada...');
 
@@ -954,12 +1591,30 @@ export async function runCourseGenerationPipeline(
     const beginnerValidation = await validateStructureByLevel(structure, 'beginner');
     const intermediateValidation = await validateStructureByLevel(structure, 'intermediate');
     const advancedValidation = await validateStructureByLevel(structure, 'advanced');
+
+    // 7.1. Validação específica do domínio acadêmico
+    await updateProgress(92, 4, 'Validando completude específica do domínio...');
+    const domainValidation = await validateDomainSpecificCompleteness(structure, academicDomain);
+    console.log(`🎓 Validação do domínio ${academicDomain}: ${domainValidation.score}/10`);
+    if (domainValidation.missingElements.length > 0) {
+      console.log(`⚠️ Elementos faltantes: ${domainValidation.missingElements.join(', ')}`);
+    }
+    if (domainValidation.domainSpecificFeedback.length > 0) {
+      console.log(`💡 Feedback específico: ${domainValidation.domainSpecificFeedback.join(', ')}`);
+    }
+
     await updateProgress(95, 4, 'Validação de qualidade concluída...');
 
     // 8. Aplicar melhorias se necessário
     if (!beginnerValidation.isComplete || beginnerValidation.score < CONFIG.MIN_QUALITY_SCORE) {
       console.log(`🔧 Aplicando melhorias no nível iniciante...`);
       // Aqui você pode adicionar lógica para melhorar o nível iniciante
+    }
+
+    // 8.1. Aplicar melhorias específicas do domínio se necessário
+    if (!domainValidation.isComplete || domainValidation.score < CONFIG.MIN_QUALITY_SCORE) {
+      console.log(`🔧 Aplicando melhorias específicas do domínio ${academicDomain}...`);
+      // Aqui você pode adicionar lógica para melhorar aspectos específicos do domínio
     }
 
     // 9. Adicionar metadados finais
@@ -971,11 +1626,23 @@ export async function runCourseGenerationPipeline(
         confidence,
         isAcademic,
         referenceTopicsCount: referenceTopics.length,
+        documentTopicsCount: extractedDocumentTopics?.length || 0,
+        totalTopicsUsed: allTopics.length,
         booksFound: bookData.books.length,
+        uploadedFilesCount: uploadedFiles?.length || 0,
         validationScores: {
           beginner: beginnerValidation.score,
           intermediate: intermediateValidation.score,
-          advanced: advancedValidation.score
+          advanced: advancedValidation.score,
+          domainSpecific: domainValidation.score
+        },
+        academicDomain: {
+          detected: academicDomain,
+          domainName: domainConfig.DOMAIN_NAME || 'Geral',
+          configurationApplied: true,
+          domainCompleteness: domainValidation.isComplete,
+          missingElements: domainValidation.missingElements,
+          domainFeedback: domainValidation.domainSpecificFeedback
         }
       }
     };
@@ -990,4 +1657,561 @@ export async function runCourseGenerationPipeline(
     console.error(`❌ Erro no pipeline de geração:`, error);
     throw error;
   }
+}
+
+// ============================================================================
+// CONFIGURAÇÕES ADAPTÁVEIS POR ÁREA ACADÊMICA
+// ============================================================================
+
+/**
+ * Configurações específicas por domínio acadêmico para otimizar busca e estruturação
+ */
+export const DOMAIN_CONFIGS = {
+  // Engenharias
+  engineering: {
+    name: 'Engenharia',
+    searchDomains: ['ieee.org', 'abnt.org.br', 'confea.org.br'],
+    additionalSearchTerms: ['normas técnicas', 'códigos de construção', 'padrões industriais'],
+    moduleStructure: {
+      theory: 0.4,        // 40% teoria
+      practice: 0.6       // 60% prática
+    },
+    minModules: 15,
+    maxModules: 25,
+    prerequisites: ['Matemática', 'Física', 'Química'],
+    skillFocus: ['problem-solving', 'design', 'analysis'],
+    industryStandards: true,
+    labWork: true
+  },
+
+  // Ciências Exatas
+  mathematics: {
+    name: 'Matemática',
+    searchDomains: ['mathworld.wolfram.com', 'ams.org', 'sbm.org.br'],
+    additionalSearchTerms: ['teoremas', 'demonstrações', 'axiomas'],
+    moduleStructure: {
+      theory: 0.7,
+      practice: 0.3
+    },
+    minModules: 12,
+    maxModules: 20,
+    prerequisites: ['Álgebra', 'Geometria'],
+    skillFocus: ['logical-reasoning', 'proof-writing', 'abstraction'],
+    industryStandards: false,
+    labWork: false
+  },
+
+  physics: {
+    name: 'Física',
+    searchDomains: ['aps.org', 'sbfisica.org.br', 'cern.ch'],
+    additionalSearchTerms: ['experimentos', 'leis físicas', 'aplicações'],
+    moduleStructure: {
+      theory: 0.6,
+      practice: 0.4
+    },
+    minModules: 12,
+    maxModules: 18,
+    prerequisites: ['Matemática', 'Cálculo'],
+    skillFocus: ['experimentation', 'modeling', 'analysis'],
+    industryStandards: false,
+    labWork: true
+  },
+
+  // Computação
+  computer_science: {
+    name: 'Ciência da Computação',
+    searchDomains: ['acm.org', 'ieee.org', 'github.com'],
+    additionalSearchTerms: ['algoritmos', 'estruturas de dados', 'programação'],
+    moduleStructure: {
+      theory: 0.3,
+      practice: 0.7
+    },
+    minModules: 15,
+    maxModules: 25,
+    prerequisites: ['Lógica', 'Matemática Discreta'],
+    skillFocus: ['programming', 'problem-solving', 'systems-design'],
+    industryStandards: true,
+    labWork: true
+  },
+
+  // Ciências Biológicas
+  biology: {
+    name: 'Biologia',
+    searchDomains: [ 'ncbi.nlm.nih.gov', 'sbb.org.br', 'nature.com'],
+    additionalSearchTerms: ['organismos', 'sistemas biológicos', 'ecologia'],
+    moduleStructure: {
+      theory: 0.5,
+      practice: 0.5
+    },
+    minModules: 12,
+    maxModules: 20,
+    prerequisites: ['Química', 'Biologia Básica'],
+    skillFocus: ['observation', 'classification', 'experimentation'],
+    industryStandards: false,
+    labWork: true
+  },
+
+  // Química
+  chemistry: {
+    name: 'Química',
+    searchDomains: [ 'acs.org', 'sbq.org.br', 'iupac.org'],
+    additionalSearchTerms: ['reações químicas', 'síntese', 'análise'],
+    moduleStructure: {
+      theory: 0.5,
+      practice: 0.5
+    },
+    minModules: 12,
+    maxModules: 18,
+    prerequisites: ['Matemática', 'Física'],
+    skillFocus: ['synthesis', 'analysis', 'safety'],
+    industryStandards: true,
+    labWork: true
+  },
+
+  // Medicina e Saúde
+  medicine: {
+    name: 'Medicina',
+    searchDomains: [ 'cfm.org.br', 'pubmed.ncbi.nlm.nih.gov', 'who.int'],
+    additionalSearchTerms: ['diagnóstico', 'tratamento', 'anatomia', 'fisiologia'],
+    moduleStructure: {
+      theory: 0.4,
+      practice: 0.6
+    },
+    minModules: 20,
+    maxModules: 30,
+    prerequisites: ['Biologia', 'Química', 'Física'],
+    skillFocus: ['diagnosis', 'treatment', 'patient-care'],
+    industryStandards: true,
+    labWork: true
+  },
+
+  // Economia e Administração
+  economics: {
+    name: 'Economia',
+    searchDomains: [ 'aea-web.org', 'anpec.org.br', 'bcb.gov.br'],
+    additionalSearchTerms: ['mercados', 'políticas econômicas', 'estatísticas'],
+    moduleStructure: {
+      theory: 0.6,
+      practice: 0.4
+    },
+    minModules: 12,
+    maxModules: 18,
+    prerequisites: ['Matemática', 'Estatística'],
+    skillFocus: ['analysis', 'modeling', 'policy-making'],
+    industryStandards: false,
+    labWork: false
+  },
+
+  business: {
+    name: 'Administração',
+    searchDomains: [ 'ama.org', 'cfa.org.br', 'sebrae.com.br'],
+    additionalSearchTerms: ['gestão', 'estratégia', 'marketing', 'finanças'],
+    moduleStructure: {
+      theory: 0.4,
+      practice: 0.6
+    },
+    minModules: 15,
+    maxModules: 22,
+    prerequisites: ['Matemática Básica', 'Economia'],
+    skillFocus: ['leadership', 'strategy', 'decision-making'],
+    industryStandards: true,
+    labWork: false
+  },
+
+  // Direito
+  law: {
+    name: 'Direito',
+    searchDomains: [ 'oab.org.br', 'stf.jus.br', 'planalto.gov.br'],
+    additionalSearchTerms: ['legislação', 'jurisprudência', 'doutrina'],
+    moduleStructure: {
+      theory: 0.7,
+      practice: 0.3
+    },
+    minModules: 15,
+    maxModules: 25,
+    prerequisites: ['História', 'Filosofia'],
+    skillFocus: ['interpretation', 'argumentation', 'research'],
+    industryStandards: true,
+    labWork: false
+  },
+
+  // Psicologia
+  psychology: {
+    name: 'Psicologia',
+    searchDomains: [ 'apa.org', 'cfp.org.br', 'scielo.br'],
+    additionalSearchTerms: ['comportamento', 'terapia', 'desenvolvimento'],
+    moduleStructure: {
+      theory: 0.5,
+      practice: 0.5
+    },
+    minModules: 15,
+    maxModules: 22,
+    prerequisites: ['Biologia', 'Estatística'],
+    skillFocus: ['assessment', 'intervention', 'research'],
+    industryStandards: true,
+    labWork: true
+  },
+
+  // Arquitetura
+  architecture: {
+    name: 'Arquitetura',
+    searchDomains: [ 'cau.org.br', 'archdaily.com.br', 'abnt.org.br'],
+    additionalSearchTerms: ['projeto', 'urbanismo', 'sustentabilidade'],
+    moduleStructure: {
+      theory: 0.3,
+      practice: 0.7
+    },
+    minModules: 18,
+    maxModules: 25,
+    prerequisites: ['Matemática', 'Física', 'Arte'],
+    skillFocus: ['design', 'planning', 'visualization'],
+    industryStandards: true,
+    labWork: true
+  },
+
+  // Arte e Design
+  arts: {
+    name: 'Artes',
+    searchDomains: [ 'funarte.gov.br', 'mac.usp.br'],
+    additionalSearchTerms: ['técnicas artísticas', 'história da arte', 'criatividade'],
+    moduleStructure: {
+      theory: 0.3,
+      practice: 0.7
+    },
+    minModules: 10,
+    maxModules: 18,
+    prerequisites: ['História', 'Filosofia'],
+    skillFocus: ['creativity', 'expression', 'technique'],
+    industryStandards: false,
+    labWork: true
+  },
+
+  // Geografia
+  geography: {
+    name: 'Geografia',
+    searchDomains: [ 'ibge.gov.br', 'inpe.br', 'agb.org.br'],
+    additionalSearchTerms: ['cartografia', 'geopolítica', 'meio ambiente'],
+    moduleStructure: {
+      theory: 0.6,
+      practice: 0.4
+    },
+    minModules: 12,
+    maxModules: 18,
+    prerequisites: ['História', 'Matemática'],
+    skillFocus: ['mapping', 'analysis', 'field-work'],
+    industryStandards: false,
+    labWork: true
+  },
+
+  // História
+  history: {
+    name: 'História',
+    searchDomains: [ 'anpuh.org', 'bn.gov.br', 'ihgb.org.br'],
+    additionalSearchTerms: ['fontes históricas', 'historiografia', 'cronologia'],
+    moduleStructure: {
+      theory: 0.8,
+      practice: 0.2
+    },
+    minModules: 12,
+    maxModules: 20,
+    prerequisites: ['Leitura Crítica', 'Geografia'],
+    skillFocus: ['research', 'interpretation', 'writing'],
+    industryStandards: false,
+    labWork: false
+  },
+
+  // Educação
+  education: {
+    name: 'Educação',
+    searchDomains: [ 'mec.gov.br', 'anped.org.br', 'capes.gov.br'],
+    additionalSearchTerms: ['pedagogia', 'didática', 'currículo'],
+    moduleStructure: {
+      theory: 0.5,
+      practice: 0.5
+    },
+    minModules: 15,
+    maxModules: 22,
+    prerequisites: ['Psicologia', 'Sociologia'],
+    skillFocus: ['teaching', 'curriculum-design', 'assessment'],
+    industryStandards: true,
+    labWork: true
+  }
+};
+
+/**
+ * Detecta automaticamente o domínio acadêmico baseado na disciplina
+ */
+export function detectAcademicDomain(discipline: string, subject: string): keyof typeof DOMAIN_CONFIGS | 'general' {
+  const disciplineLower = discipline.toLowerCase();
+  const subjectLower = subject.toLowerCase();
+  const combined = `${disciplineLower} ${subjectLower}`;
+
+  // Engenharias
+  if (/engenharia|mecânica|elétrica|civil|química|produção|materiais|estruturas/i.test(combined)) {
+    return 'engineering';
+  }
+
+  // Matemática
+  if (/matemática|cálculo|álgebra|geometria|estatística|análise/i.test(combined)) {
+    return 'mathematics';
+  }
+
+  // Física
+  if (/física|mecânica|eletromagnetismo|termodinâmica|óptica/i.test(combined)) {
+    return 'physics';
+  }
+
+  // Computação
+  if (/computação|programação|algoritmos|software|dados|inteligência artificial|machine learning/i.test(combined)) {
+    return 'computer_science';
+  }
+
+  // Biologia
+  if (/biologia|genética|ecologia|botânica|zoologia|microbiologia/i.test(combined)) {
+    return 'biology';
+  }
+
+  // Química
+  if (/química|orgânica|inorgânica|analítica|físico-química/i.test(combined)) {
+    return 'chemistry';
+  }
+
+  // Medicina
+  if (/medicina|anatomia|fisiologia|patologia|farmacologia|enfermagem/i.test(combined)) {
+    return 'medicine';
+  }
+
+  // Economia
+  if (/economia|microeconomia|macroeconomia|econometria|finanças/i.test(combined)) {
+    return 'economics';
+  }
+
+  // Administração
+  if (/administração|gestão|marketing|recursos humanos|estratégia/i.test(combined)) {
+    return 'business';
+  }
+
+  // Direito
+  if (/direito|jurídico|lei|legislação|advocacia/i.test(combined)) {
+    return 'law';
+  }
+
+  // Psicologia
+  if (/psicologia|comportamento|terapia|desenvolvimento/i.test(combined)) {
+    return 'psychology';
+  }
+
+  // Arquitetura
+  if (/arquitetura|urbanismo|projeto|construção/i.test(combined)) {
+    return 'architecture';
+  }
+
+  // Arte
+  if (/arte|design|música|teatro|cinema|pintura/i.test(combined)) {
+    return 'arts';
+  }
+
+  // Geografia
+  if (/geografia|cartografia|geopolítica|meio ambiente/i.test(combined)) {
+    return 'geography';
+  }
+
+  // História
+  if (/história|historiografia|cronologia/i.test(combined)) {
+    return 'history';
+  }
+
+  // Educação
+  if (/educação|pedagogia|didática|ensino/i.test(combined)) {
+    return 'education';
+  }
+
+  return 'general';
+}
+
+/**
+ * Aplica configurações específicas do domínio ao pipeline
+ */
+export function applyDomainConfiguration(
+  domain: keyof typeof DOMAIN_CONFIGS | 'general',
+  baseConfig: any
+): any {
+  if (domain === 'general') {
+    return baseConfig;
+  }
+
+  const domainConfig = DOMAIN_CONFIGS[domain];
+
+  return {
+    ...baseConfig,
+    TARGET_MODULES_MIN: domainConfig.minModules,
+    TARGET_MODULES_MAX: domainConfig.maxModules,
+    DOMAIN_SEARCH_TERMS: domainConfig.additionalSearchTerms,
+    DOMAIN_SEARCH_DOMAINS: domainConfig.searchDomains,
+    MODULE_THEORY_RATIO: domainConfig.moduleStructure.theory,
+    MODULE_PRACTICE_RATIO: domainConfig.moduleStructure.practice,
+    EXPECTED_PREREQUISITES: domainConfig.prerequisites,
+    FOCUS_SKILLS: domainConfig.skillFocus,
+    REQUIRES_INDUSTRY_STANDARDS: domainConfig.industryStandards,
+    REQUIRES_LAB_WORK: domainConfig.labWork,
+    DOMAIN_NAME: domainConfig.name
+  };
+}
+
+/**
+ * Gera busca especializada baseada no domínio
+ */
+export async function generateDomainSpecificSearch(
+  discipline: string,
+  subject: string,
+  level: string
+): Promise<{
+  searchQueries: string[];
+  domains: string[];
+  additionalTerms: string[];
+}> {
+  const domain = detectAcademicDomain(discipline, subject);
+
+  if (domain === 'general') {
+    return {
+      searchQueries: [
+        `${discipline} curriculum ${level}`,
+        `${subject} course outline`,
+        `${discipline} topics syllabus`
+      ],
+      domains: ['edu.br', 'edu'],
+      additionalTerms: ['curriculum', 'syllabus', 'course']
+    };
+  }
+
+  const config = DOMAIN_CONFIGS[domain];
+
+  const searchQueries = [
+    `${discipline} curriculum ${level} ${config.additionalSearchTerms[0]}`,
+    `${subject} course outline university`,
+    `${discipline} syllabus ${config.additionalSearchTerms[1] || ''}`,
+    ...(config.industryStandards ? [`${discipline} industry standards`] : []),
+    ...(config.labWork ? [`${discipline} laboratory exercises`] : [])
+  ];
+
+  return {
+    searchQueries,
+    domains: config.searchDomains,
+    additionalTerms: config.additionalSearchTerms
+  };
+}
+
+/**
+ * Valida completude baseada no domínio
+ */
+export async function validateDomainSpecificCompleteness(
+  structure: any,
+  domain: keyof typeof DOMAIN_CONFIGS | 'general'
+): Promise<{
+  isComplete: boolean;
+  score: number;
+  missingElements: string[];
+  domainSpecificFeedback: string[];
+}> {
+  if (domain === 'general') {
+    return {
+      isComplete: true,
+      score: 8.0,
+      missingElements: [],
+      domainSpecificFeedback: []
+    };
+  }
+
+  const config = DOMAIN_CONFIGS[domain];
+  const missingElements: string[] = [];
+  const feedback: string[] = [];
+  let score = 10;
+
+  // Verificar número de módulos (penalidade mais suave)
+  const moduleCount = structure.modules?.length || 0;
+  if (moduleCount < config.minModules) {
+    const ratio = moduleCount / config.minModules;
+    if (ratio < 0.5) {
+      missingElements.push(`Mínimo ${config.minModules} módulos (atual: ${moduleCount})`);
+      score -= 2; // Penalidade maior apenas se muito abaixo
+    } else {
+      feedback.push(`Recomenda-se mais módulos (atual: ${moduleCount}, ideal: ${config.minModules})`);
+      score -= 0.5; // Penalidade menor se próximo
+    }
+  }
+
+  // Verificar balanceamento teoria/prática
+  const theoryModules = structure.modules?.filter((m: any) =>
+    m.description?.toLowerCase().includes('teoria') ||
+    m.description?.toLowerCase().includes('fundamentos')
+  ).length || 0;
+
+  const practiceModules = structure.modules?.filter((m: any) =>
+    m.description?.toLowerCase().includes('prática') ||
+    m.description?.toLowerCase().includes('exercício') ||
+    m.description?.toLowerCase().includes('aplicação')
+  ).length || 0;
+
+  const actualTheoryRatio = theoryModules / moduleCount;
+  const expectedTheoryRatio = config.moduleStructure.theory;
+
+  if (Math.abs(actualTheoryRatio - expectedTheoryRatio) > 0.2) {
+    feedback.push(`Ajustar balanceamento teoria/prática (esperado: ${Math.round(expectedTheoryRatio * 100)}% teoria)`);
+    score -= 0.5;
+  }
+
+  // Verificar pré-requisitos
+  const hasPrerequisites = structure.prerequisites && structure.prerequisites.length > 0;
+  if (!hasPrerequisites && config.prerequisites.length > 0) {
+    missingElements.push('Pré-requisitos específicos da área');
+    score -= 1;
+  }
+
+  // Verificar aspectos específicos (penalidades mais suaves)
+  if (config.industryStandards) {
+    const hasStandards = structure.modules?.some((m: any) =>
+      m.description?.toLowerCase().includes('norma') ||
+      m.description?.toLowerCase().includes('padrão') ||
+      m.description?.toLowerCase().includes('regulamentação') ||
+      m.title?.toLowerCase().includes('norma') ||
+      m.title?.toLowerCase().includes('padrão')
+    );
+    if (!hasStandards) {
+      feedback.push('Considere incluir normas e padrões industriais');
+      score -= 0.3; // Penalidade menor
+    }
+  }
+
+  if (config.labWork) {
+    const hasLab = structure.modules?.some((m: any) =>
+      m.description?.toLowerCase().includes('laboratório') ||
+      m.description?.toLowerCase().includes('prática') ||
+      m.description?.toLowerCase().includes('experimento') ||
+      m.title?.toLowerCase().includes('prática') ||
+      m.description?.toLowerCase().includes('aplicação')
+    );
+    if (!hasLab) {
+      feedback.push('Considere incluir mais atividades práticas/laboratoriais');
+      score -= 0.3; // Penalidade menor
+    }
+  }
+
+  // Verificar competências específicas (busca mais ampla)
+  const skillsFound = config.skillFocus.some(skill => {
+    const skillWords = skill.replace('-', ' ').split(' ');
+    return skillWords.some(word =>
+      JSON.stringify(structure).toLowerCase().includes(word)
+    );
+  });
+  if (!skillsFound) {
+    feedback.push(`Incluir competências específicas: ${config.skillFocus.join(', ')}`);
+    score -= 0.2; // Penalidade bem menor
+  }
+
+  return {
+    isComplete: missingElements.length === 0,
+    score: Math.max(score, 0),
+    missingElements,
+    domainSpecificFeedback: feedback
+  };
 }

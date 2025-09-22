@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "fileName": "test-document.txt",
+    "processedAt": "2025-09-22T15:19:15.244Z",
+    "status": "complete"
+  },
+  "extractedMetadata": {
+    "pages": 1,
+    "headings": [],
+    "title": "test-document",
+    "language": "pt"
+  },
+  "chunksCount": 200,
+  "topicsCount": 5,
+  "tocEntries": 11,
+  "firstChunk": "Este é um texto de teste sobre mecânica vetorial estática.\n\nForças e momentos são conceitos fundamentais.\n\nO equilíbrio de corpos rígidos é estudado através das condições de equilíbrio.\n\nVetores força e decomposição vetorial.\n\nEstática dos corpos rígidos e equilíbrio de forças.\n\nAnálise de treliças e estruturas.\n\nMomentos e torques aplicados.",
+  "topics": [
+    {
+      "title": "Forças e Momentos",
+      "description": "Forças e momentos são conceitos fundamentais na mecânica vetorial estática, essenciais para a análise de sistemas em equilíbrio. Eles ajudam a entender como as forças atuam sobre os corpos rígidos e como essas forças podem ser representadas e manipuladas.",
+      "chunksCount": 1
+    },
+    {
+      "title": "Condições de Equilíbrio",
+      "description": "O equilíbrio de corpos rígidos é determinado por condições específicas que garantem que a soma das forças e a soma dos momentos atuando sobre o corpo sejam iguais a zero. Essas condições são cruciais para a análise de estruturas estáticas.",
+      "chunksCount": 1
+    },
+    {
+      "title": "Decomposição Vetorial",
+      "description": "A decomposição vetorial é uma técnica utilizada para representar vetores de força em suas componentes, facilitando a análise de sistemas complexos. Essa abordagem permite que as forças sejam tratadas em direções específicas, simplificando os cálculos.",
+      "chunksCount": 1
+    },
+    {
+      "title": "Estática dos Corpos Rígidos",
+      "description": "A estática dos corpos rígidos envolve o estudo do comportamento de objetos que não se movem sob a ação de forças, focando na análise do equilíbrio e das interações entre forças. É um aspecto fundamental da engenharia e da física.",
+      "chunksCount": 1
+    },
+    {
+      "title": "Análise de Treliças e Estruturas",
+      "description": "A análise de treliças e estruturas é um campo que aplica os princípios da mecânica vetorial estática para determinar as forças internas e reações em estruturas complexas, garantindo sua estabilidade e segurança.",
+      "chunksCount": 1
+    }
+  ]
+}

@@ -379,6 +379,20 @@ export async function POST(request: NextRequest) {
     
     // Analisar arquivos enviados com OpenAI File Search, se houver
     let fileAnalysis: FileAnalysisResult | undefined = undefined;
+
+    // DEBUG: Verificar estado dos arquivos
+    console.log('🔍 DEBUG - Estado dos arquivos:');
+    console.log('uploadedFiles existe?', !!uploadedFiles);
+    console.log('uploadedFiles é array?', Array.isArray(uploadedFiles));
+    console.log('uploadedFiles.length:', uploadedFiles?.length || 0);
+    if (uploadedFiles && uploadedFiles.length > 0) {
+      console.log('Primeiro arquivo:', JSON.stringify({
+        id: uploadedFiles[0].id,
+        name: uploadedFiles[0].name,
+        assistantId: uploadedFiles[0].assistantId
+      }));
+    }
+
     if (uploadedFiles && Array.isArray(uploadedFiles) && uploadedFiles.length > 0) {
       console.log('📁 Analisando', uploadedFiles.length, 'arquivo(s) com OpenAI File Search...');
       

@@ -1,0 +1,19 @@
+=== CONTEÚDO EXTRAÍDO DO ARQUIVO ===
+Arquivo Original: AULA_2_-_Introduo_a_MCM003T_-_Processos_de_fabricao.pdf
+Data/Hora: 2025-09-22T16:41:45.745Z
+Tamanho do conteúdo: 470 caracteres
+
+=== CONTEÚDO ===
+[ARQUIVO PDF DETECTADO]
+Arquivo: AULA_2_-_Introduo_a_MCM003T_-_Processos_de_fabricao.pdf
+Tamanho: 1710KB
+Status: PDF válido carregado com sucesso
+
+Nota: O texto não pôde ser extraído automaticamente devido a limitações técnicas,
+mas o arquivo foi processado e está disponível para análise manual.
+
+Conteúdo identificado: Material acadêmico sobre Mecânica Vetorial - Estática
+Capítulo: Centro de Gravidade e Centróide
+Instituição: UNIFEI - Universidade Federal de Itajubá
+
+=== FIM DO CONTEÚDO ===

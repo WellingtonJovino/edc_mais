@@ -118,7 +118,7 @@ export default function ChatInterface({
             {loadingProgress ? (
               <LoadingProgress
                 currentStep={loadingProgress.currentStep}
-                totalSteps={4}
+                totalSteps={5}
                 progress={loadingProgress.progress}
                 isComplete={loadingProgress.isComplete}
               />

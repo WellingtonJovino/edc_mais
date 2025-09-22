@@ -762,3 +762,231 @@ export interface VirtualLibrary {
     createdAt: string;
   }[];
 }
+
+// ============================================================================
+// TIPOS PARA SISTEMA DE UPLOAD E RAG - V2
+// ============================================================================
+
+/**
+ * Arquivo processado com texto extraído e metadata
+ */
+export interface ProcessedFile {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  uploadedAt: string;
+
+  // Conteúdo extraído
+  rawText: string;
+  extractedMetadata: {
+    pages?: number;
+    headings?: string[];
+    author?: string;
+    title?: string;
+    language?: string;
+  };
+
+  // Processamento para RAG
+  chunks: DocumentChunk[];
+  embeddings?: EmbeddingResult[];
+
+  // Análise do documento
+  extractedTOC: string[];
+  extractedTopics: DocumentTopic[];
+
+  // Estados de processamento
+  processingStatus: 'uploaded' | 'extracting' | 'chunking' | 'embedding' | 'analyzed' | 'complete' | 'error';
+  errorMessage?: string;
+}
+
+/**
+ * Chunk de texto do documento com embeddings
+ */
+export interface DocumentChunk {
+  id: string;
+  fileId: string;
+  text: string;
+  order: number;
+
+  // Metadata do chunk
+  startChar: number;
+  endChar: number;
+  tokens: number;
+
+  // Para overlap
+  overlapBefore?: string;
+  overlapAfter?: string;
+
+  // Embedding
+  embedding?: number[];
+  embeddingModel?: string;
+}
+
+/**
+ * Resultado de embedding de um chunk
+ */
+export interface EmbeddingResult {
+  chunkId: string;
+  embedding: number[];
+  model: string;
+  tokensUsed: number;
+  createdAt: string;
+}
+
+/**
+ * Tópico extraído do documento via RAG
+ */
+export interface DocumentTopic {
+  id: string;
+  title: string;
+  description: string;
+
+  // Chunks relacionados a este tópico
+  relatedChunks: {
+    chunkId: string;
+    relevanceScore: number;
+    excerpt: string; // Trecho relevante do chunk
+  }[];
+
+  // Metadata
+  estimatedDuration?: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  keyTerms?: string[];
+}
+
+/**
+ * Resultado do matching entre tópicos do curso e documentos
+ */
+export interface TopicMatch {
+  courseTopicId: string;
+  documentTopicId?: string;
+  matchType: 'strong' | 'weak' | 'none';
+  similarityScore: number;
+
+  // Para strong match
+  linkedChunks?: {
+    chunkId: string;
+    score: number;
+    excerpt: string;
+  }[];
+
+  // Para weak match
+  gaps?: string[]; // Partes não cobertas
+  suggestions?: string[]; // Sugestões de granularização
+
+  // Para no match
+  newTopicSuggestion?: {
+    title: string;
+    description: string;
+    chunks: string[];
+  };
+}
+
+/**
+ * Configuração para o pipeline de processamento de arquivos
+ */
+export interface FileProcessingConfig {
+  // Configurações de chunking
+  chunkSize: number; // caracteres (padrão: 1000)
+  chunkOverlap: number; // caracteres (padrão: 200)
+
+  // Configurações de embedding
+  embeddingModel: 'text-embedding-3-large' | 'text-embedding-3-small';
+  batchSize: number; // chunks por batch (padrão: 10)
+
+  // Configurações de matching
+  strongMatchThreshold: number; // padrão: 0.75
+  weakMatchThreshold: number; // padrão: 0.60
+
+  // Configurações gerais
+  enableOCR: boolean;
+  maxFileSize: number; // bytes
+  supportedFormats: string[];
+}
+
+/**
+ * Estado do processamento de arquivos
+ */
+export interface FileProcessingStatus {
+  sessionId: string;
+  currentFile?: string;
+  currentStep: 'uploading' | 'extracting' | 'chunking' | 'embedding' | 'analyzing' | 'matching' | 'complete';
+  progress: number; // 0-100
+  message: string;
+
+  // Resultados parciais
+  processedFiles: ProcessedFile[];
+  matches: TopicMatch[];
+
+  // Erros
+  errors: {
+    fileId: string;
+    step: string;
+    error: string;
+  }[];
+}
+
+/**
+ * Resultado final do processamento com estrutura integrada
+ */
+export interface EnhancedCourseStructure {
+  // Estrutura base do curso
+  course: Course;
+
+  // Integração com documentos
+  documentMatches: {
+    [topicId: string]: {
+      matchType: 'strong' | 'weak' | 'none';
+      documentSources: {
+        fileId: string;
+        fileName: string;
+        chunks: {
+          chunkId: string;
+          text: string;
+          score: number;
+        }[];
+      }[];
+    };
+  };
+
+  // Novos tópicos criados a partir dos documentos
+  documentDerivedTopics: {
+    moduleId: string;
+    topic: Topic;
+    sourceChunks: {
+      fileId: string;
+      chunkId: string;
+      text: string;
+    }[];
+  }[];
+
+  // Tópicos sem correspondência em documentos
+  unmatchedTopics: {
+    topicId: string;
+    title: string;
+    needsExternalContent: boolean;
+  }[];
+}
+
+/**
+ * Contexto RAG para geração de conteúdo
+ */
+export interface RAGContext {
+  topicId: string;
+  sources: {
+    type: 'document' | 'web' | 'perplexity';
+    content: string;
+    metadata: {
+      fileName?: string;
+      chunkId?: string;
+      url?: string;
+      relevanceScore: number;
+    };
+  }[];
+
+  // Para geração de aula-texto
+  keyPoints: string[];
+  examples: string[];
+  relatedConcepts: string[];
+}
