@@ -333,6 +333,11 @@ Perfil de Aprendizado:
     setIsLoading(true);
     resetProgress();
 
+    // Limpar arquivos imediatamente após criar a mensagem
+    if (uploadedFiles.length > 0) {
+      setUploadedFiles([]);
+    }
+
     // Gerar sessionId único para rastrear progresso
     const currentSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     setSessionId(currentSessionId);
@@ -429,10 +434,7 @@ Quando estiver satisfeito, clique em "Gerar Curso" para criar as aulas!`;
         };
         setMessages(prev => [...prev, successMessage]);
 
-        // Limpar arquivos após envio bem-sucedido
-        if (uploadedFiles.length > 0) {
-          setUploadedFiles([]);
-        }
+        // Arquivos já foram limpos imediatamente após o envio
       } else {
         console.error('❌ Resposta do servidor:', data);
         throw new Error(data.error || 'Erro desconhecido no servidor');
