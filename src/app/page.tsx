@@ -56,9 +56,12 @@ export default function HomePage() {
   // Estado para popup de confirmação
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Estados para animações de transição
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [showFloatingElements, setShowFloatingElements] = useState(false);
+  // Estado unificado para transição suave
+  const [transitionProgress, setTransitionProgress] = useState(0);
+
+  // Estados derivados do progresso para compatibilidade
+  const isTransitioning = transitionProgress > 0 && transitionProgress < 100;
+  const showFloatingElements = transitionProgress > 10 && transitionProgress < 90;
 
   // Sistema de progresso em tempo real com SSE
   const [sessionId, setSessionId] = useState<string>('');
@@ -397,16 +400,37 @@ Perfil de Aprendizado:
 
       const data = await response.json();
 
-      if (data.success && data.structure) {
+      console.log('📋 Resposta da API:', {
+        success: data.success,
+        hasGoal: !!data.goal,
+        hasStructure: !!data.structure,
+        goalTitle: data.goal?.title || data.structure?.goal?.title
+      });
+
+      if (data.success && (data.structure || data.goal)) {
+        // Aceitar ambos os formatos (novo: data.goal, antigo: data.structure.goal)
+        const goalData = data.goal || data.structure?.goal;
+        const prerequisites = goalData.prerequisites || data.prerequisites;
+
+        if (!goalData) {
+          throw new Error('Estrutura do curso não encontrada na resposta');
+        }
+
         // Converter estrutura da API para o formato do syllabus
         const syllabusData = {
-          title: data.structure.goal.title,
-          description: data.structure.goal.description,
-          modules: data.structure.goal.modules || [],
-          level: data.structure.goal.level
+          title: goalData.title,
+          description: goalData.description,
+          modules: goalData.modules || [],
+          level: goalData.level
         };
 
         setCurrentSyllabus(syllabusData);
+
+        console.log('✅ Syllabus criado:', {
+          title: syllabusData.title,
+          modulesCount: syllabusData.modules.length,
+          level: syllabusData.level
+        });
 
         // Construir mensagem de resposta simplificada
         let responseContent = `✨ Estrutura do curso criada com sucesso!
@@ -418,7 +442,7 @@ Você pode editar a estrutura no painel ao lado ou me pedir para:
 • Refazer tudo com novas instruções`;
 
         // Se há pré-requisitos, adicionar sugestão de geração
-        if (data.structure.goal.prerequisites && data.structure.goal.prerequisites.length > 0) {
+        if (prerequisites && prerequisites.length > 0) {
           responseContent += `
 • Gerar curso de pré-requisito - Digite "Gerar curso de [nome]"`;
         }
@@ -439,15 +463,44 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
         // Arquivos já foram limpos imediatamente após o envio
       } else {
         console.error('❌ Resposta do servidor:', data);
+        console.error('📊 Debug da resposta:', {
+          success: data.success,
+          error: data.error,
+          hasGoal: !!data.goal,
+          hasStructure: !!data.structure,
+          keys: Object.keys(data)
+        });
         throw new Error(data.error || 'Erro desconhecido no servidor');
       }
     } catch (error) {
-      console.error('Erro ao processar mensagem:', error);
+      console.error('❌ Erro ao processar mensagem:', error);
+      console.error('📋 Detalhes do erro:', {
+        message: error instanceof Error ? error.message : 'Erro desconhecido',
+        type: typeof error,
+        stack: error instanceof Error ? error.stack : null
+      });
+
+      let errorContent = 'Desculpe, ocorreu um erro ao processar sua solicitação. ';
+
+      // Personalizar mensagem baseada no tipo de erro
+      if (error instanceof Error) {
+        if (error.message.includes('Falha na resposta do servidor')) {
+          errorContent += 'Problema de conectividade com o servidor. Tente novamente em alguns segundos.';
+        } else if (error.message.includes('Estrutura do curso não encontrada')) {
+          errorContent += 'A estrutura do curso não foi retornada corretamente. Por favor, tente novamente.';
+        } else if (error.message.length > 0 && error.message.length < 100) {
+          errorContent += `Erro: ${error.message}`;
+        } else {
+          errorContent += 'Tente novamente ou reformule sua solicitação.';
+        }
+      } else {
+        errorContent += 'Tente novamente.';
+      }
 
       const errorMessage: ChatMessage = {
         id: `msg-error-${Date.now()}`,
         role: 'assistant',
-        content: 'Desculpe, ocorreu um erro ao processar sua solicitação. Tente novamente.',
+        content: errorContent,
         timestamp: new Date().toISOString(),
       };
 
@@ -484,17 +537,15 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
     const courseSessionId = `course_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     try {
-      // Iniciar criação de curso com aulas automáticas
-      const response = await fetch('/api/create-course-with-lessons', {
+      // Iniciar criação de curso
+      const response = await fetch('/api/create-course', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          sessionId: courseSessionId,
           syllabus: finalSyllabus,
-          uploadedFiles: uploadedFiles,
-          generateLessons: true
+          uploadedFiles: uploadedFiles
         }),
       });
 
@@ -504,64 +555,41 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
 
       const data = await response.json();
 
-      if (data.success && data.sessionId) {
-        // Conectar ao SSE para acompanhar progresso
-        const eventSource = new EventSource(`/api/create-course-with-lessons?sessionId=${courseSessionId}`);
+      if (data.success && data.courseId) {
+        // Simular progresso de criação com loading suave e contínuo
+        let progress = 10;
+        const targetProgress = 100;
+        const totalDuration = 4000; // 4 segundos total
+        const startTime = Date.now();
 
-        eventSource.onmessage = (event) => {
-          try {
-            const progressData = JSON.parse(event.data);
+        const progressInterval = setInterval(() => {
+          const elapsed = Date.now() - startTime;
+          const percentComplete = Math.min(elapsed / totalDuration, 1);
 
-            if (progressData.type === 'progress') {
-              setCourseGenerationProgress(progressData.progress);
+          // Função de easing para suavizar o progresso
+          const easeOutQuart = 1 - Math.pow(1 - percentComplete, 4);
+          progress = 10 + (easeOutQuart * 90); // De 10% a 100%
 
-              // Log detalhado do progresso
-              console.log(`📊 ${progressData.phase} - ${progressData.progress}%`, {
-                currentSubtopic: progressData.currentSubtopic,
-                completedLessons: progressData.completedLessons,
-                totalLessons: progressData.totalLessons
-              });
+          setCourseGenerationProgress(progress);
+
+          if (progress >= 99.5) {
+            clearInterval(progressInterval);
+            setCourseGenerationProgress(100);
+
+            // Armazenar curso no localStorage para página de curso
+            if (data.course) {
+              localStorage.setItem(`course_${data.courseId}`, JSON.stringify(data.course));
             }
-            else if (progressData.type === 'completed') {
-              // Curso e aulas criados com sucesso
-              eventSource.close();
-              setCourseGenerationProgress(100);
 
-              // Armazenar curso no localStorage para página de curso
-              if (progressData.result && progressData.result.course) {
-                localStorage.setItem(`course_${progressData.result.courseId}`, JSON.stringify(progressData.result.course));
-              }
-
-              // Aguardar um momento para mostrar 100% e redirecionar
-              setTimeout(() => {
-                router.push(`/courses/${progressData.result.courseId}`);
-              }, 1500);
-            }
-            else if (progressData.type === 'error') {
-              eventSource.close();
-              throw new Error(progressData.error || 'Erro durante criação do curso');
-            }
-          } catch (parseError) {
-            console.error('Erro ao processar progresso:', parseError);
-            eventSource.close();
-            throw new Error('Erro na comunicação com servidor');
+            // Redirecionamento automático imediato quando chegar a 100%
+            setTimeout(() => {
+              window.location.href = `/courses/${data.courseId}`;
+            }, 200); // Delay mínimo para garantir que o 100% seja visível
           }
-        };
-
-        eventSource.onerror = (error) => {
-          console.error('Erro no EventSource:', error);
-          eventSource.close();
-          throw new Error('Conexão perdida com servidor');
-        };
-
-        // Timeout de segurança (10 minutos)
-        setTimeout(() => {
-          eventSource.close();
-          throw new Error('Timeout na geração do curso');
-        }, 10 * 60 * 1000);
+        }, 50); // Atualiza a cada 50ms para animação mais suave
 
       } else {
-        throw new Error(data.error || 'Erro ao iniciar criação do curso');
+        throw new Error(data.error || 'Falha ao criar o curso');
       }
     } catch (error) {
       console.error('Erro ao criar curso:', error);
@@ -614,34 +642,50 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
     };
     setMessages(prev => [...prev, confirmMessage]);
 
-    // Aguardar um momento para mostrar a mensagem
+    // Iniciar transição unificada com requestAnimationFrame
     setTimeout(() => {
-      // Iniciar animação de elementos flutuantes
-      setShowFloatingElements(true);
+      startSmoothTransition();
+    }, 1000);
+  };
 
-      // Iniciar animação de saída após elementos flutuantes aparecerem
-      setTimeout(() => {
-        setIsTransitioning(true);
-      }, 300);
+  // Função para transição suave unificada
+  const startSmoothTransition = () => {
+    let progress = 0;
+    const duration = 3000; // 3 segundos para transição mais suave
+    const startTime = performance.now();
+    let courseCreationStarted = false;
 
-      // Após animação de saída, iniciar loading
-      setTimeout(() => {
+    const easeInOutCubic = (t: number) => {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    };
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const linearProgress = Math.min(elapsed / duration, 1);
+      progress = easeInOutCubic(linearProgress) * 100;
+
+      setTransitionProgress(progress);
+
+      // Iniciar criação do curso quando a transição chegar a 85% (mais perto do final)
+      if (progress >= 85 && !courseCreationStarted) {
+        courseCreationStarted = true;
         handleCreateCourse(currentSyllabus);
-      }, 1200);
+      }
 
-      // Limpar elementos flutuantes após a animação completa
-      setTimeout(() => {
-        setShowFloatingElements(false);
-        setIsTransitioning(false);
-      }, 2000);
-    }, 1500);
+      // Continuar animação até completar
+      if (progress < 100) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    requestAnimationFrame(animate);
   };
 
 
   // Mostrar tela de loading de geração se necessário
   if (isGeneratingCourse) {
     return (
-      <div className="h-screen flex flex-col overflow-hidden" style={{
+      <div className="h-screen flex flex-col overflow-hidden animate-in fade-in duration-300" style={{
         background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%)'
       }}>
         {/* Header simplificado durante loading */}
@@ -735,9 +779,17 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{
-      background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%)'
-    }}>
+    <div
+      className="h-screen flex flex-col overflow-hidden"
+      style={{
+        background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%)',
+        transform: `scale(${1 + (transitionProgress * 0.05) / 100})`,
+        filter: `brightness(${100 + (transitionProgress * 20) / 100}%)`,
+        opacity: Math.max(0, 1 - (transitionProgress / 100)),
+        transition: 'none',
+        willChange: 'transform, filter, opacity'
+      }}
+    >
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 shadow-md flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -832,9 +884,16 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full">
-          <div className={`grid grid-cols-1 lg:grid-cols-2 gap-8 h-full transition-all duration-1000 ${
-            isTransitioning ? 'opacity-0 scale-90 transform rotate-1 filter blur-sm' : 'opacity-100 scale-100'
-          }`}>
+          <div
+            className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full"
+            style={{
+              transform: `scale(${1 - (transitionProgress * 0.2) / 100}) translateY(${-(transitionProgress * 100) / 100}px)`,
+              opacity: Math.max(0, 1 - (transitionProgress * 1.2) / 100),
+              filter: `blur(${(transitionProgress * 8) / 100}px)`,
+              transition: 'none',
+              willChange: 'transform, opacity, filter'
+            }}
+          >
             {/* Chat Panel */}
             <div className="bg-white rounded-lg border border-gray-200 flex flex-col h-full overflow-hidden">
               <div className="p-4 border-b border-gray-200 flex-shrink-0">

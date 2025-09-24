@@ -1069,7 +1069,7 @@ IMPORTANTE: Dê prioridade especial aos tópicos extraídos dos documentos envia
     response_format: { type: "json_object" }
   });
 
-  // Parse com tratamento de erro
+  // Parse com tratamento de erro robusto
   let structure;
   try {
     const rawContent = completion.choices[0]?.message?.content || '{}';
@@ -1081,13 +1081,45 @@ IMPORTANTE: Dê prioridade especial aos tópicos extraídos dos documentos envia
     // Remover possíveis caracteres de controle
     cleanedContent = cleanedContent.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
 
+    // Corrigir strings não terminadas (problema reportado)
+    // Detectar e corrigir aspas não fechadas
+    const lines = cleanedContent.split('\n');
+    const fixedLines = lines.map(line => {
+      // Contar aspas duplas na linha
+      const doubleQuotes = (line.match(/"/g) || []).length;
+      // Se número ímpar de aspas, adicionar uma ao final antes de vírgula ou chave
+      if (doubleQuotes % 2 !== 0) {
+        if (line.trimEnd().endsWith(',')) {
+          return line.slice(0, -1) + '",';
+        } else if (line.trimEnd().endsWith('}') || line.trimEnd().endsWith(']')) {
+          const lastChar = line[line.length - 1];
+          return line.slice(0, -1) + '"' + lastChar;
+        } else {
+          return line + '"';
+        }
+      }
+      return line;
+    });
+    cleanedContent = fixedLines.join('\n');
+
     // Se o JSON estiver incompleto, tentar completar
     if (!cleanedContent.trim().endsWith('}')) {
       console.log('⚠️ JSON aparenta estar incompleto, tentando completar...');
-      // Contar chaves abertas vs fechadas
+
+      // Contar chaves e colchetes
       const openBraces = (cleanedContent.match(/{/g) || []).length;
       const closeBraces = (cleanedContent.match(/}/g) || []).length;
+      const openBrackets = (cleanedContent.match(/\[/g) || []).length;
+      const closeBrackets = (cleanedContent.match(/\]/g) || []).length;
+
+      const missingBrackets = openBrackets - closeBrackets;
       const missingBraces = openBraces - closeBraces;
+
+      // Fechar colchetes primeiro, depois chaves
+      if (missingBrackets > 0) {
+        cleanedContent += ']'.repeat(missingBrackets);
+        console.log(`🔧 Adicionados ${missingBrackets} colchetes de fechamento`);
+      }
 
       if (missingBraces > 0) {
         cleanedContent += '}'.repeat(missingBraces);
@@ -1502,52 +1534,32 @@ export async function runCourseGenerationPipeline(
     await updateProgress(8, 1, 'Extraindo assunto principal...');
     const { subject, hasUsefulContext, context } = await extractSubject(userMessage);
 
-    // 1.5. VERIFICAR CACHE ANTES DE GERAR (15-25%)
-    await updateProgress(15, 1, 'Verificando cache de cursos...');
+    // 1.5. VERIFICAR ESTRUTURAS EXISTENTES ANTES DE GERAR (15-25%)
+    await updateProgress(15, 1, 'Verificando estruturas existentes...');
 
-    // Importar funções de cache do Supabase
-    const { findSimilarCourse, findExactCourseInCache } = await import('./supabase');
+    // Importar funções do Supabase
+    const { findExistingStructure, saveCourseStructure } = await import('./supabase');
 
-    // Primeiro, tentar busca exata
-    console.log('🔍 Tentando encontrar curso no cache...');
+    // Primeiro, verificar se existe estrutura para esse assunto e nível
+    const educationLevel = userProfile.educationLevel || 'undergraduate';
+    console.log('🔍 Verificando estrutura existente no banco...');
     console.log('📝 Parâmetros de busca:', {
       subject,
-      level: userProfile.educationLevel || 'undergraduate',
-      context: context || userProfile.background || userProfile.specificGoals
+      educationLevel
     });
 
-    const exactCourse = await findExactCourseInCache(
-      subject,
-      userProfile.educationLevel || 'undergraduate',
-      context || userProfile.background || userProfile.specificGoals
-    );
+    const existingStructure = await findExistingStructure(subject, educationLevel);
 
-    if (exactCourse) {
-      console.log('🎯 Curso exato encontrado no cache! Retornando curso salvo.');
-      await updateProgress(100, 4, 'Curso encontrado no cache!');
+    if (existingStructure) {
+      console.log('🎯 Estrutura existente encontrada! Reutilizando estrutura do banco.');
+      await updateProgress(100, 4, 'Estrutura encontrada no banco!');
 
-      // Converter estrutura do banco para formato esperado pelo frontend
-      return convertCachedCourseToStructure(exactCourse, userProfile);
+      // Retornar estrutura existente
+      return existingStructure.data;
     }
 
-    // Se não encontrou exato, tentar curso similar
-    const similarCourse = await findSimilarCourse(
-      subject,
-      userProfile.educationLevel || 'undergraduate',
-      context || userProfile.background || userProfile.specificGoals,
-      0.8 // 80% de similaridade
-    );
-
-    if (similarCourse) {
-      console.log('🔄 Curso similar encontrado no cache! Adaptando curso existente.');
-      await updateProgress(100, 4, 'Curso similar encontrado! Adaptando...');
-
-      // Converter e adaptar curso similar
-      return convertCachedCourseToStructure(similarCourse, userProfile);
-    }
-
-    console.log('🔄 Nenhum curso encontrado no cache. Gerando novo curso...');
-    await updateProgress(25, 1, 'Nenhum curso no cache. Gerando novo...');
+    console.log('🔄 Nenhuma estrutura encontrada. Gerando nova estrutura...');
+    await updateProgress(25, 1, 'Nenhuma estrutura no banco. Gerando nova...');
 
     // 2. Detectar disciplina acadêmica (15-25%)
     await updateProgress(20, 1, 'Detectando disciplina acadêmica...');
@@ -1694,26 +1706,27 @@ export async function runCourseGenerationPipeline(
       }
     };
 
-    // 8. Salvar curso no cache (95-98%)
-    await updateProgress(95, 4, 'Salvando curso no cache...');
+    // 8. Salvar estrutura no banco (95-98%)
+    await updateProgress(95, 4, 'Salvando estrutura no banco...');
     try {
-      const { saveCourseToCache } = await import('./supabase');
+      // Salvar a estrutura gerada no novo sistema
+      const { id, isNew } = await saveCourseStructure(subject, educationLevel, structure);
 
-      // Preparar dados para salvar
-      const learningPlan = {
-        id: crypto.randomUUID(),
-        goal: structure,
-        messages: [], // O chat interface adicionará as mensagens
-        progress: 0,
-        created_at: new Date().toISOString(),
-        uploadedFiles: uploadedFiles || []
+      if (isNew) {
+        console.log('💾 Nova estrutura salva no banco com sucesso! ID:', id);
+      } else {
+        console.log('♻️ Estrutura já existente foi reutilizada! ID:', id);
+      }
+
+      // Adicionar ID da estrutura aos metadados
+      structure.metadata = {
+        ...structure.metadata,
+        structureId: id,
+        isNewStructure: isNew
       };
-
-      await saveCourseToCache(learningPlan);
-      console.log('💾 Curso salvo no cache com sucesso!');
     } catch (error) {
-      console.warn('⚠️ Erro ao salvar curso no cache:', error);
-      // Não interromper o fluxo se o cache falhar
+      console.warn('⚠️ Erro ao salvar estrutura no banco:', error);
+      // Não interromper o fluxo se o salvamento falhar
     }
 
     // 9. Finalizar (98-100%)

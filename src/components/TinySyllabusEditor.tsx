@@ -44,7 +44,10 @@ export default function TinySyllabusEditor({
 }: TinySyllabusEditorProps) {
   const editorRef = useRef<any>(null);
   const [content, setContent] = useState('');
+  const [initialContent, setInitialContent] = useState('');
+  const [isInitialized, setIsInitialized] = useState(false);
   const [apiKey, setApiKey] = useState('7i561pdhiavj8ahbfaaftp6r78g5h252zvir5aqy493tszno'); // Substitua por sua API key real
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Converter syllabus para HTML estruturado
   const syllabusToHtml = (syllabusData: SyllabusData) => {
@@ -158,24 +161,44 @@ export default function TinySyllabusEditor({
     };
   };
 
-  // Inicializar conteúdo quando o syllabus mudar
+  // Inicializar conteúdo apenas na primeira vez ou quando syllabus muda substancialmente
   useEffect(() => {
     const htmlContent = syllabusToHtml(syllabus);
-    setContent(htmlContent);
-  }, [syllabus]);
-
-  const handleEditorChange = (content: string) => {
-    setContent(content);
-
-    // Tentar atualizar o syllabus, mas sem validações restritivas
-    try {
-      const updatedSyllabus = htmlToSyllabus(content);
-      onSyllabusUpdate(updatedSyllabus);
-    } catch (error) {
-      // Em caso de erro, apenas log - não bloquear edição
-      console.warn('Erro ao processar conteúdo editado:', error);
+    if (!isInitialized) {
+      setInitialContent(htmlContent);
+      setContent(htmlContent);
+      setIsInitialized(true);
     }
+  }, [syllabus, isInitialized]);
+
+  const handleEditorChange = (newContent: string) => {
+    setContent(newContent);
+
+    // Limpar timeout anterior se existir
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Debounce a atualização do syllabus para evitar loops
+    debounceTimeoutRef.current = setTimeout(() => {
+      try {
+        const updatedSyllabus = htmlToSyllabus(newContent);
+        onSyllabusUpdate(updatedSyllabus);
+      } catch (error) {
+        // Em caso de erro, apenas log - não bloquear edição
+        console.warn('Erro ao processar conteúdo editado:', error);
+      }
+    }, 500); // 500ms de debounce
   };
+
+  // Cleanup do debounce no unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
 
 
   const totalTopics = syllabus.modules.reduce((sum, module) => sum + module.topics.length, 0);
@@ -185,7 +208,7 @@ export default function TinySyllabusEditor({
       <Editor
         ref={editorRef}
         apiKey={apiKey || "no-api-key"}
-        value={content}
+        initialValue={initialContent}
         onEditorChange={handleEditorChange}
         init={{
           height: '100%',
@@ -249,6 +272,11 @@ export default function TinySyllabusEditor({
           force_br_newlines: false,
           force_p_newlines: true,
 
+          // Configurações para evitar problemas de cursor
+          inline: false,
+          cache_suffix: '?v=' + Date.now(),
+          preserve_selection: true,
+
           // Configurações de paste e upload
           paste_data_images: true,
           paste_as_text: false,
@@ -258,6 +286,23 @@ export default function TinySyllabusEditor({
           setup: (editor: any) => {
             editor.on('init', () => {
               console.log('TinyMCE Editor initialized');
+              // Focar no editor após inicialização
+              editor.focus();
+            });
+
+            // Evitar perda de foco durante atualizações
+            editor.on('beforesetcontent', () => {
+              // Salvar posição do cursor
+              if (editor.selection) {
+                editor.savedSelection = editor.selection.getBookmark();
+              }
+            });
+
+            editor.on('setcontent', () => {
+              // Restaurar posição do cursor
+              if (editor.savedSelection && editor.selection) {
+                editor.selection.moveToBookmark(editor.savedSelection);
+              }
             });
 
             // Adicionar comandos customizados para facilitar edição de estrutura

@@ -25,7 +25,10 @@
       "Bash(git mv:*)",
       "Bash(git checkout:*)",
       "Bash(npm audit:*)",
-      "Bash(git show-branch:*)"
+      "Bash(git show-branch:*)",
+      "Bash(echo:*)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)"
     ],
     "deny": [],
     "ask": []

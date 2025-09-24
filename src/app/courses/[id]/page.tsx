@@ -15,7 +15,6 @@ import {
   Wand2,
   Loader2
 } from 'lucide-react';
-import LessonTextViewer from '@/components/LessonTextViewer';
 
 // Estrutura de dados temporária - depois virá do banco
 interface Course {
@@ -66,10 +65,6 @@ export default function CoursePage() {
   const [activeTab, setActiveTab] = useState<'theory' | 'videos' | 'exercises'>('theory');
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
-  const [generatingLesson, setGeneratingLesson] = useState(false);
-  const [lessonContent, setLessonContent] = useState<string | null>(null);
-  const [lessonMetadata, setLessonMetadata] = useState<any>(null);
-  const [generatingTopicLessons, setGeneratingTopicLessons] = useState<string | null>(null);
 
   // Carregar dados reais do curso
   useEffect(() => {
@@ -207,47 +202,8 @@ export default function CoursePage() {
   const selectSubtopic = (subtopic: Subtopic) => {
     setSelectedSubtopic(subtopic);
     setActiveTab('theory'); // Sempre abrir na aba teoria
-    setLessonContent(null);
-    setLessonMetadata(null);
   };
 
-  const generateLessonText = async () => {
-    if (!selectedSubtopic || generatingLesson) return;
-
-    setGeneratingLesson(true);
-    try {
-      const response = await fetch('/api/generate-lesson', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          subtopicId: selectedSubtopic.id,
-          subtopicTitle: selectedSubtopic.title,
-          subtopicDescription: selectedSubtopic.description,
-          moduleTitle: findModuleForSubtopic(selectedSubtopic.id)?.title,
-          courseTitle: course?.title,
-          userLevel: 'intermediate',
-          discipline: 'Matemática', // Pode ser dinâmico
-          estimatedDuration: selectedSubtopic.estimatedDuration
-        })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setLessonContent(data.content);
-        setLessonMetadata(data.metadata);
-      } else {
-        throw new Error(data.error || 'Erro ao gerar aula');
-      }
-    } catch (error) {
-      console.error('Erro ao gerar aula-texto:', error);
-      alert('Erro ao gerar aula-texto. Tente novamente.');
-    } finally {
-      setGeneratingLesson(false);
-    }
-  };
 
   const findModuleForSubtopic = (subtopicId: string) => {
     return course?.modules.find(module =>
@@ -257,12 +213,9 @@ export default function CoursePage() {
     );
   };
 
-  // Verificar se um tópico tem aulas geradas (pelo menos um subtópico tem teoria)
-  const topicHasLessons = (topic: Topic): boolean => {
-    return topic.subtopics.some(subtopic => subtopic.theory && subtopic.theory.trim().length > 0);
-  };
 
-  // Gerar aulas para um tópico específico
+  // Função removida - geração de aulas não disponível na V3
+  /*
   const generateTopicLessons = async (moduleIndex: number, topicIndex: number, topic: Topic) => {
     if (generatingTopicLessons) return;
 
@@ -351,6 +304,7 @@ export default function CoursePage() {
       alert('Erro ao gerar aulas do tópico. Tente novamente.');
     }
   };
+  */
 
   if (loading) {
     return (
@@ -440,22 +394,6 @@ export default function CoursePage() {
                           </div>
                         </button>
 
-                        {/* Botão Gerar Aulas - só aparece se o tópico não tem aulas */}
-                        {!topicHasLessons(topic) && (
-                          <button
-                            onClick={() => generateTopicLessons(course.modules.indexOf(module), topicIndex, topic)}
-                            disabled={generatingTopicLessons === `${course.modules.indexOf(module)}-${topicIndex}`}
-                            className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            title="Gerar aulas para este tópico"
-                          >
-                            {generatingTopicLessons === `${course.modules.indexOf(module)}-${topicIndex}` ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Wand2 className="w-3 h-3" />
-                            )}
-                            <span className="hidden sm:inline">Gerar</span>
-                          </button>
-                        )}
                       </div>
 
                       {/* Subtópicos */}
@@ -549,29 +487,10 @@ export default function CoursePage() {
             <div className="flex-1 overflow-y-auto p-6">
               {activeTab === 'theory' && (
                 <div className="max-w-4xl mx-auto">
-                  {lessonContent ? (
-                    <LessonTextViewer
-                      content={lessonContent}
-                      metadata={lessonMetadata}
-                      onRegenerate={generateLessonText}
-                      isRegenerating={generatingLesson}
-                    />
-                  ) : selectedSubtopic.theory ? (
+                  {selectedSubtopic.theory ? (
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
                       <div className="flex items-center justify-between mb-6">
                         <h3 className="text-xl font-bold text-gray-900">Aula-Texto</h3>
-                        <button
-                          onClick={generateLessonText}
-                          disabled={generatingLesson}
-                          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {generatingLesson ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Wand2 className="w-4 h-4" />
-                          )}
-                          {generatingLesson ? 'Gerando...' : 'Gerar Aula IA'}
-                        </button>
                       </div>
                       <div className="prose prose-lg max-w-none">
                         <p>{selectedSubtopic.theory}</p>
@@ -581,35 +500,10 @@ export default function CoursePage() {
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
                       <div className="text-center py-12">
                         <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-xl font-bold text-gray-900 mb-2">Aula-Texto não gerada</h3>
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">Conteúdo em preparação</h3>
                         <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                          Esta aula ainda não foi gerada. Clique no botão abaixo para criar automaticamente uma aula-texto profissional usando IA.
+                          O conteúdo teórico deste subtópico será disponibilizado em breve.
                         </p>
-                        <button
-                          onClick={generateLessonText}
-                          disabled={generatingLesson}
-                          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors mx-auto"
-                        >
-                          {generatingLesson ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                          ) : (
-                            <Wand2 className="w-5 h-5" />
-                          )}
-                          {generatingLesson ? 'Gerando Aula...' : 'Gerar Aula com IA'}
-                        </button>
-                        {generatingLesson && (
-                          <div className="mt-6">
-                            <div className="bg-blue-50 rounded-lg p-4 max-w-md mx-auto">
-                              <div className="flex items-center gap-3 text-blue-700">
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                <div className="text-left">
-                                  <p className="font-medium">Gerando aula-texto...</p>
-                                  <p className="text-sm text-blue-600">Isso pode levar 1-2 minutos</p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )}

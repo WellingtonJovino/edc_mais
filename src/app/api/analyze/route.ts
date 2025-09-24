@@ -133,12 +133,10 @@ export async function POST(request: NextRequest) {
         // Retornar no formato esperado pelo frontend
         return NextResponse.json({
           success: true,
-          structure: {
-            goal: analysis,
-            prerequisites: analysis.prerequisites || [],
-            bookRecommendations: pipelineResult.references || [],
-            videos: {}
-          },
+          goal: analysis,
+          prerequisites: analysis.prerequisites || [],
+          bookRecommendations: pipelineResult.references || [],
+          videos: {},
           validationReport: {
             score: pipelineResult.metadata?.validationScores || {},
             passed: true
@@ -904,7 +902,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      structure: finalCourseStructure,
+      goal: finalCourseStructure.goal,
+      messages: finalCourseStructure.messages,
+      topicValidation: finalCourseStructure.topicValidation,
+      uploadedFiles: finalCourseStructure.uploadedFiles,
+      fileAnalysis: finalCourseStructure.fileAnalysis,
       message: 'Estrutura do curso criada e validada. Revise e clique em "Gerar Curso" para continuar.',
       metadata: {
         subjectExtraction: {

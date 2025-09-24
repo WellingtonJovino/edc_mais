@@ -54,7 +54,54 @@ export interface CourseFile {
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Verificar se as variáveis estão configuradas
+if (!supabaseUrl || !supabaseKey) {
+  console.warn('⚠️ Supabase não configurado - variáveis de ambiente faltando');
+  console.warn('📌 O sistema funcionará sem persistência no banco de dados');
+}
+
+// Configurações adicionais para resolver problemas de conectividade
+const supabaseOptions = {
+  auth: {
+    persistSession: false
+  },
+  global: {
+    fetch: fetch
+  }
+};
+
+export const supabase = supabaseUrl && supabaseKey
+  ? createClient(supabaseUrl, supabaseKey, supabaseOptions)
+  : null as any;
+
+/**
+ * Verifica se a conexão com o Supabase está funcionando
+ */
+export async function checkSupabaseConnection(): Promise<boolean> {
+  if (!supabase) {
+    console.log('❌ Cliente Supabase não configurado');
+    return false;
+  }
+
+  try {
+    // Tentar uma query simples para verificar conexão
+    const { error } = await supabase
+      .from('course_structures')
+      .select('count')
+      .limit(1);
+
+    if (error) {
+      console.error('❌ Erro na conexão com Supabase:', error.message);
+      return false;
+    }
+
+    console.log('✅ Conexão com Supabase funcionando');
+    return true;
+  } catch (error) {
+    console.error('❌ Falha ao conectar com Supabase:', error);
+    return false;
+  }
+}
 
 // Função para sanitizar dados antes de salvar no banco
 function sanitizeDataForDB(data: any): any {
@@ -1156,6 +1203,265 @@ export async function findExactCourseInCache(
 
   } catch (error) {
     console.error('❌ Erro na busca exata no cache:', error);
+    return null;
+  }
+}
+
+// ===== NOVO SISTEMA DE ESTRUTURAS DE CURSO =====
+
+/**
+ * Salva a estrutura do curso no banco após a geração
+ */
+export async function saveCourseStructure(
+  subject: string,
+  educationLevel: string,
+  structure: any
+): Promise<{ id: string; isNew: boolean }> {
+  try {
+    console.log('💾 Salvando estrutura do curso no banco...');
+    console.log(`📚 Assunto: ${subject} | Nível: ${educationLevel}`);
+
+    // Verificar se Supabase está configurado
+    if (!supabase) {
+      console.log('⚠️ Supabase não configurado - salvando localmente');
+      return {
+        id: `local_${Date.now()}`,
+        isNew: true
+      };
+    }
+
+    // Verificar se já existe estrutura para esse assunto e nível
+    const existing = await findExistingStructure(subject, educationLevel);
+
+    if (existing) {
+      console.log('✅ Estrutura existente encontrada, registrando reuso');
+      await recordStructureUsage(existing.id, true);
+      return { id: existing.id, isNew: false };
+    }
+
+    // Contar módulos e tópicos
+    let totalModules = 0;
+    let totalTopics = 0;
+
+    if (structure.modules && Array.isArray(structure.modules)) {
+      totalModules = structure.modules.length;
+      structure.modules.forEach((module: any) => {
+        if (module.topics && Array.isArray(module.topics)) {
+          totalTopics += module.topics.length;
+        }
+      });
+    }
+
+    // Preparar dados para inserção (sem hash_key, será gerado automaticamente)
+    const structureData = {
+      subject: subject.toLowerCase().trim(),
+      education_level: educationLevel,
+      title: structure.title || `Curso de ${subject}`,
+      description: structure.description || null,
+      course_level: structure.level || 'intermediate',
+      structure_data: sanitizeDataForDB(structure),
+      total_modules: totalModules,
+      total_topics: totalTopics,
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        version: 'v3.1',
+        sources: structure.metadata?.sources || []
+      }
+    };
+
+    console.log('📝 Inserindo nova estrutura no banco...');
+    console.log('📊 Dados a inserir:', {
+      subject: structureData.subject,
+      education_level: structureData.education_level,
+      title: structureData.title,
+      total_modules: structureData.total_modules,
+      total_topics: structureData.total_topics
+    });
+
+    const { data, error } = await supabase
+      .from('course_structures')
+      .insert(structureData)
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('❌ Erro ao salvar estrutura:', error);
+
+      // Se falhar, retornar ID local para não interromper o fluxo
+      if (error.message?.includes('fetch failed') || error.code === 'PGRST116') {
+        console.log('⚠️ Banco não acessível, continuando com ID local');
+        return {
+          id: `local_${Date.now()}`,
+          isNew: true
+        };
+      }
+
+      throw error;
+    }
+
+    console.log('✅ Nova estrutura salva com ID:', data.id);
+
+    // Registrar primeiro uso (não crítico se falhar)
+    try {
+      await recordStructureUsage(data.id, false);
+    } catch (usageError) {
+      console.warn('⚠️ Erro ao registrar uso, mas estrutura foi salva:', usageError);
+    }
+
+    return { id: data.id, isNew: true };
+
+  } catch (error) {
+    console.error('❌ Erro ao salvar estrutura do curso:', error);
+
+    // Retornar ID local em caso de erro para não interromper o fluxo
+    console.log('📌 Continuando com ID local após erro');
+    return {
+      id: `local_${Date.now()}`,
+      isNew: true
+    };
+  }
+}
+
+/**
+ * Busca estrutura existente no banco
+ */
+export async function findExistingStructure(
+  subject: string,
+  educationLevel: string
+): Promise<any | null> {
+  try {
+    console.log('🔍 Buscando estrutura existente...');
+    console.log(`📊 Parâmetros: subject="${subject}", level="${educationLevel}"`);
+
+    // Verificar se Supabase está configurado
+    if (!supabase) {
+      console.log('⚠️ Supabase não configurado - usando modo local');
+      return null;
+    }
+
+    // Normalizar subject para busca
+    const normalizedSubject = subject.toLowerCase().trim();
+
+    // Gerar hash para busca
+    const hashKey = `${normalizedSubject}::${educationLevel}`;
+    const hash = Buffer.from(hashKey).toString('base64').replace(/[/+=]/g, '').substring(0, 32);
+    console.log(`🔑 Hash de busca: ${hash}`);
+
+    // Tentar primeiro com RPC (se a função existir)
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('find_existing_structure', {
+        p_subject: normalizedSubject,
+        p_education_level: educationLevel
+      });
+
+      if (!rpcError && rpcData && rpcData.length > 0) {
+        const structure = rpcData[0];
+        console.log('✅ Estrutura encontrada via RPC:', structure.title);
+        return {
+          id: structure.id,
+          title: structure.title,
+          description: structure.description,
+          data: structure.structure_data,
+          created_at: structure.created_at
+        };
+      }
+    } catch (rpcError) {
+      console.log('⚠️ RPC não disponível, usando query direta');
+    }
+
+    // Fallback: Query direta se RPC falhar
+    console.log('🔍 Tentando busca direta no banco...');
+    const { data, error } = await supabase
+      .from('course_structures')
+      .select('*')
+      .eq('subject', normalizedSubject)
+      .eq('education_level', educationLevel)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.error('❌ Erro na busca direta:', error);
+      return null;
+    }
+
+    if (data && data.length > 0) {
+      const structure = data[0];
+      console.log('✅ Estrutura encontrada via query direta:', structure.title);
+      console.log(`📅 Criada em: ${new Date(structure.created_at).toLocaleDateString()}`);
+
+      return {
+        id: structure.id,
+        title: structure.title,
+        description: structure.description,
+        data: structure.structure_data,
+        created_at: structure.created_at
+      };
+    }
+
+    console.log('❌ Nenhuma estrutura encontrada para esses parâmetros');
+    return null;
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar estrutura existente:', error);
+    return null;
+  }
+}
+
+/**
+ * Registra o uso de uma estrutura
+ */
+export async function recordStructureUsage(
+  structureId: string,
+  isReused: boolean = false,
+  userIdentifier?: string
+): Promise<void> {
+  // Se não houver Supabase configurado, apenas log
+  if (!supabase) {
+    console.log('📊 Uso local registrado (sem banco)');
+    return;
+  }
+
+  try {
+    const usageData = {
+      structure_id: structureId,
+      user_identifier: userIdentifier || `session_${Date.now()}`,
+      reused: isReused
+    };
+
+    const { error } = await supabase
+      .from('course_structure_usage')
+      .insert(usageData);
+
+    if (error) {
+      console.error('⚠️ Erro ao registrar uso da estrutura:', error);
+      // Não lançar erro, apenas log
+    } else {
+      console.log(`📊 Uso registrado: ${isReused ? 'Reutilização' : 'Primeira geração'}`);
+    }
+  } catch (error) {
+    console.error('⚠️ Erro ao registrar uso:', error);
+  }
+}
+
+/**
+ * Busca estrutura por ID
+ */
+export async function getCourseStructureById(id: string): Promise<any | null> {
+  try {
+    const { data, error } = await supabase
+      .from('course_structures')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      console.error('❌ Erro ao buscar estrutura por ID:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('❌ Erro:', error);
     return null;
   }
 }
