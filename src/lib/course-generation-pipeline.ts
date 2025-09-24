@@ -1240,12 +1240,12 @@ Retorne em JSON:
     });
 
     // Parse módulo com tratamento de erro
-    let module;
+    let parsedModule;
     try {
-      module = JSON.parse(moduleCompletion.choices[0]?.message?.content || '{}');
+      parsedModule = JSON.parse(moduleCompletion.choices[0]?.message?.content || '{}');
     } catch (error) {
       console.error(`❌ Erro ao parsear módulo ${cluster.name}:`, error);
-      module = {
+      parsedModule = {
         id: `mod_${modules.length + 1}`,
         title: cluster.name,
         description: `Módulo sobre ${cluster.name}`,
@@ -1254,7 +1254,7 @@ Retorne em JSON:
         topics: []
       };
     }
-    modules.push(module);
+    modules.push(parsedModule);
   }
 
   // Passo 3: Gerar pré-requisitos baseados na disciplina
@@ -1502,6 +1502,53 @@ export async function runCourseGenerationPipeline(
     await updateProgress(8, 1, 'Extraindo assunto principal...');
     const { subject, hasUsefulContext, context } = await extractSubject(userMessage);
 
+    // 1.5. VERIFICAR CACHE ANTES DE GERAR (15-25%)
+    await updateProgress(15, 1, 'Verificando cache de cursos...');
+
+    // Importar funções de cache do Supabase
+    const { findSimilarCourse, findExactCourseInCache } = await import('./supabase');
+
+    // Primeiro, tentar busca exata
+    console.log('🔍 Tentando encontrar curso no cache...');
+    console.log('📝 Parâmetros de busca:', {
+      subject,
+      level: userProfile.educationLevel || 'undergraduate',
+      context: context || userProfile.background || userProfile.specificGoals
+    });
+
+    const exactCourse = await findExactCourseInCache(
+      subject,
+      userProfile.educationLevel || 'undergraduate',
+      context || userProfile.background || userProfile.specificGoals
+    );
+
+    if (exactCourse) {
+      console.log('🎯 Curso exato encontrado no cache! Retornando curso salvo.');
+      await updateProgress(100, 4, 'Curso encontrado no cache!');
+
+      // Converter estrutura do banco para formato esperado pelo frontend
+      return convertCachedCourseToStructure(exactCourse, userProfile);
+    }
+
+    // Se não encontrou exato, tentar curso similar
+    const similarCourse = await findSimilarCourse(
+      subject,
+      userProfile.educationLevel || 'undergraduate',
+      context || userProfile.background || userProfile.specificGoals,
+      0.8 // 80% de similaridade
+    );
+
+    if (similarCourse) {
+      console.log('🔄 Curso similar encontrado no cache! Adaptando curso existente.');
+      await updateProgress(100, 4, 'Curso similar encontrado! Adaptando...');
+
+      // Converter e adaptar curso similar
+      return convertCachedCourseToStructure(similarCourse, userProfile);
+    }
+
+    console.log('🔄 Nenhum curso encontrado no cache. Gerando novo curso...');
+    await updateProgress(25, 1, 'Nenhum curso no cache. Gerando novo...');
+
     // 2. Detectar disciplina acadêmica (15-25%)
     await updateProgress(20, 1, 'Detectando disciplina acadêmica...');
     const { discipline, confidence, isAcademic } = await detectAcademicDiscipline(
@@ -1647,7 +1694,29 @@ export async function runCourseGenerationPipeline(
       }
     };
 
-    // 8. Finalizar (95-100%)
+    // 8. Salvar curso no cache (95-98%)
+    await updateProgress(95, 4, 'Salvando curso no cache...');
+    try {
+      const { saveCourseToCache } = await import('./supabase');
+
+      // Preparar dados para salvar
+      const learningPlan = {
+        id: crypto.randomUUID(),
+        goal: structure,
+        messages: [], // O chat interface adicionará as mensagens
+        progress: 0,
+        created_at: new Date().toISOString(),
+        uploadedFiles: uploadedFiles || []
+      };
+
+      await saveCourseToCache(learningPlan);
+      console.log('💾 Curso salvo no cache com sucesso!');
+    } catch (error) {
+      console.warn('⚠️ Erro ao salvar curso no cache:', error);
+      // Não interromper o fluxo se o cache falhar
+    }
+
+    // 9. Finalizar (98-100%)
     await updateProgress(100, 4, 'Curso gerado com sucesso!');
     console.log(`✅ Pipeline completo! Estrutura final gerada com sucesso.`);
 
@@ -1657,6 +1726,168 @@ export async function runCourseGenerationPipeline(
     console.error(`❌ Erro no pipeline de geração:`, error);
     throw error;
   }
+}
+
+/**
+ * Converte curso do cache para o formato esperado pelo frontend
+ */
+function convertCachedCourseToStructure(cachedCourse: any, userProfile: any): any {
+  console.log('🔄 Convertendo curso do cache para estrutura do frontend...');
+
+  // Converter tópicos para módulos se necessário
+  const modules: any[] = [];
+
+  // PRIORIDADE 1: Se existem módulos reais no banco
+  if (cachedCourse.modules && cachedCourse.modules.length > 0) {
+    console.log(`📦 Usando ${cachedCourse.modules.length} módulos reais do banco de dados`);
+
+    // Organizar tópicos por module_id se existir
+    const topicsByModuleId = new Map();
+    const topicsWithoutModule: any[] = [];
+
+    if (cachedCourse.topics) {
+      cachedCourse.topics.forEach((topic: any) => {
+        if (topic.module_id) {
+          if (!topicsByModuleId.has(topic.module_id)) {
+            topicsByModuleId.set(topic.module_id, []);
+          }
+          topicsByModuleId.get(topic.module_id).push({
+            id: topic.id,
+            title: topic.title,
+            description: topic.description || topic.detailed_description,
+            detailedDescription: topic.detailed_description,
+            learningObjectives: topic.learning_objectives || [],
+            keyTerms: topic.key_terms || [],
+            searchKeywords: topic.search_keywords || [topic.title],
+            estimatedDuration: topic.estimated_duration || '45 min',
+            difficulty: topic.difficulty || 'medium',
+            order: topic.order_index,
+            completed: topic.completed || false,
+            videos: topic.videos || [],
+            aulaTexto: topic.aula_texto || {}
+          });
+        } else {
+          topicsWithoutModule.push(topic);
+        }
+      });
+    }
+
+    // Converter módulos reais
+    cachedCourse.modules.forEach((module: any) => {
+      const moduleTopics = topicsByModuleId.get(module.id) || [];
+
+      modules.push({
+        id: module.id,
+        title: module.title,
+        description: module.description,
+        order: module.module_order,
+        topics: moduleTopics.sort((a: any, b: any) => a.order - b.order),
+        estimatedDuration: module.estimated_duration || `${Math.ceil(moduleTopics.length * 1.5)} horas`,
+        estimatedHours: module.estimated_hours,
+        learningObjectives: module.learning_objectives || [],
+        level: module.level,
+        completed: false
+      });
+    });
+
+    // Adicionar tópicos órfãos em um módulo geral se existirem
+    if (topicsWithoutModule.length > 0) {
+      console.log(`📝 Encontrados ${topicsWithoutModule.length} tópicos órfãos, criando módulo adicional`);
+
+      const orphanTopics = topicsWithoutModule.map((topic: any) => ({
+        id: topic.id,
+        title: topic.title,
+        description: topic.description || topic.detailed_description,
+        detailedDescription: topic.detailed_description,
+        learningObjectives: topic.learning_objectives || [],
+        keyTerms: topic.key_terms || [],
+        searchKeywords: topic.search_keywords || [topic.title],
+        estimatedDuration: topic.estimated_duration || '45 min',
+        difficulty: topic.difficulty || 'medium',
+        order: topic.order_index,
+        completed: topic.completed || false,
+        videos: topic.videos || [],
+        aulaTexto: topic.aula_texto || {}
+      })).sort((a: any, b: any) => a.order - b.order);
+
+      modules.push({
+        id: 'module-additional',
+        title: 'Tópicos Adicionais',
+        description: 'Tópicos complementares do curso',
+        order: 999,
+        topics: orphanTopics,
+        estimatedDuration: `${Math.ceil(orphanTopics.length * 1.5)} horas`,
+        learningObjectives: [],
+        completed: false
+      });
+    }
+
+  } else if (cachedCourse.topics && cachedCourse.topics.length > 0) {
+    // PRIORIDADE 2: Agrupar tópicos por module_title (método antigo)
+    console.log(`📝 Agrupando ${cachedCourse.topics.length} tópicos por module_title`);
+
+    const topicsByModule = new Map();
+
+    cachedCourse.topics.forEach((topic: any) => {
+      const moduleTitle = topic.module_title || 'Módulo Geral';
+
+      if (!topicsByModule.has(moduleTitle)) {
+        topicsByModule.set(moduleTitle, []);
+      }
+
+      topicsByModule.get(moduleTitle).push({
+        id: topic.id,
+        title: topic.title,
+        description: topic.description || topic.detailed_description,
+        detailedDescription: topic.detailed_description,
+        learningObjectives: topic.learning_objectives || [],
+        keyTerms: topic.key_terms || [],
+        searchKeywords: topic.search_keywords || [topic.title],
+        estimatedDuration: topic.estimated_duration || '45 min',
+        difficulty: topic.difficulty || 'medium',
+        order: topic.order_index,
+        completed: topic.completed || false,
+        videos: topic.videos || [],
+        aulaTexto: topic.aula_texto || {}
+      });
+    });
+
+    // Converter Map para array de módulos
+    let moduleIndex = 0;
+    topicsByModule.forEach((topics, moduleTitle) => {
+      modules.push({
+        id: `module-${moduleIndex}`,
+        title: moduleTitle,
+        description: `Módulo sobre ${moduleTitle}`,
+        order: moduleIndex,
+        topics: topics.sort((a: any, b: any) => a.order - b.order),
+        estimatedDuration: `${Math.ceil(topics.length * 1.5)} horas`,
+        learningObjectives: [],
+        completed: false
+      });
+      moduleIndex++;
+    });
+  }
+
+  const structure = {
+    title: cachedCourse.title,
+    description: cachedCourse.description || `Curso de ${cachedCourse.subject}`,
+    level: userProfile.level || cachedCourse.level,
+    modules: modules,
+    prerequisites: [],
+    recommendedBooks: [],
+    totalDuration: `${modules.length * 8} horas`,
+    metadata: {
+      fromCache: true,
+      originalCourseId: cachedCourse.id,
+      cacheTimestamp: new Date().toISOString(),
+      totalTopics: cachedCourse.topics?.length || 0,
+      sources: ['cache']
+    }
+  };
+
+  console.log(`✅ Curso convertido: ${modules.length} módulos, ${cachedCourse.topics?.length || 0} tópicos`);
+  return structure;
 }
 
 // ============================================================================

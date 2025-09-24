@@ -847,6 +847,63 @@ export interface FileAnalysisResult {
 /**
  * Analisa documentos para melhorar conteúdo acadêmico
  */
+/**
+ * Função genérica para chamar a API do Perplexity
+ */
+export async function callPerplexityAPI(params: {
+  prompt: string;
+  model?: string;
+  maxTokens?: number;
+  temperature?: number;
+}): Promise<{ content: string; sources?: any[] }> {
+  const { prompt, model = 'sonar-pro', maxTokens = 2000, temperature = 0.3 } = params;
+
+  try {
+    const apiKey = process.env.PERPLEXITY_API_KEY;
+    if (!apiKey) {
+      throw new Error('PERPLEXITY_API_KEY não configurada');
+    }
+
+    const response = await fetch(PERPLEXITY_API_BASE, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: 'Você é um assistente acadêmico especializado. Forneça informações precisas e bem fundamentadas.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: maxTokens,
+        temperature,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Perplexity API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content || '';
+
+    return {
+      content,
+      sources: extractCitationsFromResponse(content)
+    };
+  } catch (error) {
+    console.error('❌ Erro na API do Perplexity:', error);
+    throw new Error(`Falha na comunicação com Perplexity: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+  }
+}
+
 export async function enhanceAcademicContentWithFiles(
   assistantId: string,
   topicTitle: string,

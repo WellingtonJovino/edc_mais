@@ -15,6 +15,9 @@ export interface Course {
   topics?: CourseTopic[];
   messages?: CourseMessage[];
   files?: CourseFile[];
+  cacheHash?: string;
+  isCached?: boolean;
+  originalGenerationDate?: string;
 }
 
 export interface CourseTopic {
@@ -52,6 +55,44 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Função para sanitizar dados antes de salvar no banco
+function sanitizeDataForDB(data: any): any {
+  if (data === null || data === undefined) {
+    return data;
+  }
+
+  if (typeof data === 'string') {
+    return data
+      .replace(/\u0000/g, '') // Remove caracteres null
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove caracteres de controle
+      .replace(/\\u0000/g, '') // Remove escape sequences Unicode problemáticos
+      .replace(/\\x00/g, '') // Remove caracteres null em hex
+      .replace(/\uFEFF/g, '') // Remove BOM (Byte Order Mark)
+      .replace(/\r\n/g, '\n') // Normaliza quebras de linha
+      .replace(/\r/g, '\n') // Normaliza quebras de linha
+      .trim();
+  }
+
+  if (Array.isArray(data)) {
+    return data
+      .map(item => sanitizeDataForDB(item))
+      .filter(item => item !== null && item !== undefined && item !== ''); // Remove itens vazios
+  }
+
+  if (data && typeof data === 'object') {
+    const sanitized: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      const sanitizedValue = sanitizeDataForDB(value);
+      if (sanitizedValue !== null && sanitizedValue !== undefined && sanitizedValue !== '') {
+        sanitized[key] = sanitizedValue;
+      }
+    }
+    return sanitized;
+  }
+
+  return data;
+}
 
 // Função utilitária para retry de operações
 async function retryOperation<T>(
@@ -221,14 +262,24 @@ export async function saveCourse(learningPlan: LearningPlan): Promise<Course> {
     const totalTopics = learningPlan.goal.modules?.reduce((total, module) =>
       total + (module.topics?.length || 0), 0) || learningPlan.goal.topics?.length || 0;
 
+    // Gerar hash para cache se disponível
+    const cacheHash = learningPlan.goal.cacheHash || generateCourseHash(
+      learningPlan.goal.title,
+      learningPlan.goal.level,
+      learningPlan.goal.description
+    );
+
     // Criar o curso principal - evitar usar palavras-chave que podem ser ambíguas
     const courseData = {
-      title: learningPlan.goal.title,
-      description: learningPlan.goal.description,
+      title: sanitizeDataForDB(learningPlan.goal.title),
+      description: sanitizeDataForDB(learningPlan.goal.description),
       level: learningPlan.goal.level,
-      subject: learningPlan.goal.title,
+      subject: sanitizeDataForDB(learningPlan.goal.title),
       progress: learningPlan.progress || 0,
       total_topics: totalTopics,
+      cache_hash: cacheHash,
+      is_cached: learningPlan.goal.isCached || false,
+      original_generation_date: learningPlan.goal.originalGenerationDate || new Date().toISOString(),
     };
 
     console.log('💾 Inserindo curso na tabela courses...');
@@ -253,12 +304,48 @@ export async function saveCourse(learningPlan: LearningPlan): Promise<Course> {
     // Primeiro, salvar módulos se existirem
     const moduleIdMap: { [title: string]: string } = {};
 
-    // MÓDULOS DESABILITADOS: Não salvar módulos no banco por enquanto
-    // A estrutura hierárquica funcionará apenas através dos tópicos com module_title
     if (learningPlan.goal.modules && learningPlan.goal.modules.length > 0) {
-      console.log(`⚠️ Módulos detectados (${learningPlan.goal.modules.length}), mas inserção está desabilitada`);
-      console.log('📝 Os módulos serão representados através dos tópicos com module_title');
-      console.log('🔧 Para habilitar, corrija primeiro o erro de ambiguidade na coluna total_topics');
+      console.log(`📦 Salvando ${learningPlan.goal.modules.length} módulos...`);
+
+      for (const [index, module] of learningPlan.goal.modules.entries()) {
+        try {
+          // Normalizar o nível do módulo para garantir compatibilidade com constraint
+          const originalLevel = module.level || learningPlan.goal.level || 'beginner';
+          const normalizedLevel = normalizeModuleLevel(originalLevel);
+
+          if (originalLevel !== normalizedLevel) {
+            console.log(`📝 Nível normalizado para "${module.title}": "${originalLevel}" → "${normalizedLevel}"`);
+          }
+
+          const moduleData = {
+            course_id: course.id,
+            title: sanitizeDataForDB(module.title),
+            description: sanitizeDataForDB(module.description),
+            module_order: index,
+            estimated_hours: module.estimatedHours || 8,
+            level: normalizedLevel,
+          };
+
+          const { data: savedModule, error: moduleError } = await supabase
+            .from('course_modules')
+            .insert(moduleData)
+            .select('*')
+            .single();
+
+          if (moduleError) {
+            console.error(`❌ Erro ao salvar módulo "${module.title}":`, moduleError);
+            // Continuar mesmo com erro - usar apenas tópicos com module_title
+          } else {
+            moduleIdMap[module.title] = savedModule.id;
+            console.log(`✅ Módulo "${module.title}" salvo com ID: ${savedModule.id}`);
+          }
+        } catch (error) {
+          console.error(`❌ Erro inesperado ao salvar módulo "${module.title}":`, error);
+          // Continuar sem interromper o processo
+        }
+      }
+
+      console.log(`📦 ${Object.keys(moduleIdMap).length}/${learningPlan.goal.modules.length} módulos salvos com sucesso`);
     }
 
     // Agora salvar tópicos (nova estrutura hierárquica ou antiga)
@@ -320,9 +407,31 @@ export async function saveCourse(learningPlan: LearningPlan): Promise<Course> {
 
     if (topicsData.length > 0) {
       console.log(`📝 Inserindo ${topicsData.length} tópicos...`);
+
+      // Sanitizar dados antes de inserir
+      const sanitizedTopicsData = topicsData.map((topicData, index) => {
+        try {
+          const sanitized = sanitizeDataForDB(topicData);
+          return sanitized;
+        } catch (error) {
+          console.error(`❌ Erro ao sanitizar tópico ${index}:`, error);
+          console.error(`📊 Dados problemáticos:`, JSON.stringify(topicData).substring(0, 200));
+          // Retornar versão básica sem campos problemáticos
+          return {
+            course_id: topicData.course_id,
+            title: String(topicData.title || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, ''),
+            description: String(topicData.description || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, ''),
+            order_index: topicData.order_index || 0,
+            completed: false
+          };
+        }
+      });
+
+      console.log(`🧹 ${sanitizedTopicsData.length} tópicos sanitizados com sucesso`);
+
       const { error: topicsError } = await supabase
         .from('course_topics')
-        .insert(topicsData);
+        .insert(sanitizedTopicsData);
 
       if (topicsError) {
         console.error('❌ Erro ao inserir tópicos:', topicsError);
@@ -339,7 +448,7 @@ export async function saveCourse(learningPlan: LearningPlan): Promise<Course> {
       const messagesData = learningPlan.messages.map((message: ChatMessage) => ({
         course_id: course.id,
         role: message.role,
-        content: message.content,
+        content: sanitizeDataForDB(message.content),
         timestamp: message.timestamp
       }));
 
@@ -359,10 +468,10 @@ export async function saveCourse(learningPlan: LearningPlan): Promise<Course> {
       console.log(`📁 Inserindo ${learningPlan.uploadedFiles.length} arquivos...`);
       const filesData = learningPlan.uploadedFiles.map((file: UploadedFile) => ({
         course_id: course.id,
-        name: file.name,
+        name: sanitizeDataForDB(file.name),
         type: file.type,
         size: file.size,
-        content: file.content,
+        content: sanitizeDataForDB(file.content),
         uploaded_at: file.uploadedAt
       }));
 
@@ -504,15 +613,15 @@ export async function updateCourseProgress(courseId: string, topicId: string, co
 
     if (countError) throw countError;
 
-    const totalTopics = topics?.length || 0;
-    const completedTopics = topics?.filter(t => t.completed).length || 0;
-    const progress = totalTopics > 0 ? Math.round((completedTopics / totalTopics) * 100) : 0;
+    const totalTopicsCount = topics?.length || 0;
+    const completedTopicsCount = topics?.filter(t => t.completed).length || 0;
+    const progressPercentage = totalTopicsCount > 0 ? Math.round((completedTopicsCount / totalTopicsCount) * 100) : 0;
 
     const { error: progressError } = await supabase
       .from('courses')
       .update({
-        progress: progress,
-        total_topics: totalTopics,
+        progress: progressPercentage,
+        total_topics: totalTopicsCount,
         updated_at: new Date().toISOString()
       })
       .eq('id', courseId);
@@ -599,5 +708,454 @@ export async function deleteCourse(id: string): Promise<void> {
   } catch (error) {
     console.error('❌ Erro geral ao deletar curso:', error);
     throw new Error(`Falha ao deletar curso: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+  }
+}
+
+// ===== SISTEMA DE CACHE DE CURSOS =====
+
+// Função para normalizar níveis de módulos (converte níveis compostos)
+function normalizeModuleLevel(level: string): string {
+  if (!level) return 'beginner';
+
+  const levelStr = level.toLowerCase().trim();
+
+  // Se contém 'advanced', usar advanced
+  if (levelStr.includes('advanced')) return 'advanced';
+
+  // Se contém 'intermediate', usar intermediate
+  if (levelStr.includes('intermediate')) return 'intermediate';
+
+  // Se contém 'beginner', usar beginner
+  if (levelStr.includes('beginner')) return 'beginner';
+
+  // Se é um nível válido diretamente
+  if (['beginner', 'intermediate', 'advanced'].includes(levelStr)) {
+    return levelStr;
+  }
+
+  // Fallback para beginner
+  console.warn(`⚠️ Nível desconhecido "${level}", usando 'beginner' como fallback`);
+  return 'beginner';
+}
+
+// Função para normalizar títulos de cursos
+function normalizeCourseTitle(title: string): string {
+  return title.toLowerCase().trim()
+    // Normalizar acentos primeiro
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove acentos
+    .replace(/[^\w\s]/g, '') // Remove pontuação
+    .replace(/\s+/g, ' ') // Normaliza espaços
+    .replace(/\bcalculo\s*(i|1)\b/g, 'calculo 1') // Cálculo I → cálculo 1
+    .replace(/\bcalculo\s*(ii|2)\b/g, 'calculo 2') // Cálculo II → cálculo 2
+    .replace(/\bcalculo\s*(iii|3)\b/g, 'calculo 3') // Cálculo III → cálculo 3
+    .replace(/\bfisica\s*(i|1)\b/g, 'fisica 1') // Física I → física 1
+    .replace(/\bfisica\s*(ii|2)\b/g, 'fisica 2') // Física II → física 2
+    .replace(/\balgebra\s*linear\b/g, 'algebra linear') // Normalize álgebra linear
+    .replace(/\bgeometria\s*analitica\b/g, 'geometria analitica') // Normalize geometria analítica
+    .replace(/\bcurso\s*completo\s*de\s*/g, '') // Remove "Curso Completo de"
+    .replace(/\bcurso\s*de\s*/g, '') // Remove "Curso de"
+    .replace(/\bcurso\s*/g, '') // Remove "Curso"
+    .replace(/\bintroducao\s*a\s*/g, '') // Remove "Introdução a"
+    .replace(/\bintroducao\s*/g, '') // Remove "Introdução"
+    .trim();
+}
+
+// Função para gerar hash do conteúdo do curso para identificação rápida
+function generateCourseHash(subject: string, level: string, context?: string): string {
+  const normalizedSubject = normalizeCourseTitle(subject);
+  const normalizedLevel = level.toLowerCase().trim();
+  const normalizedContext = context ? context.toLowerCase().trim() : '';
+
+  const content = `${normalizedSubject}-${normalizedLevel}-${normalizedContext}`;
+  return Buffer.from(content).toString('base64').replace(/[/+=]/g, '').substring(0, 16);
+}
+
+// Função para calcular similaridade entre strings
+function calculateSimilarity(str1: string, str2: string): number {
+  const normalize = (s: string) => s.toLowerCase().trim()
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ');
+
+  const s1 = normalize(str1);
+  const s2 = normalize(str2);
+
+  if (s1 === s2) return 1.0;
+
+  // Similaridade por palavras em comum
+  const words1 = s1.split(' ');
+  const words2 = s2.split(' ');
+
+  const commonWords = words1.filter(word => words2.includes(word));
+  const totalWords = Math.max(words1.length, words2.length);
+
+  return commonWords.length / totalWords;
+}
+
+// Buscar cursos similares no cache
+export async function findSimilarCourse(
+  subject: string,
+  level: string,
+  context?: string,
+  similarityThreshold: number = 0.8
+): Promise<Course | null> {
+  try {
+    console.log('🔍 Buscando curso similar no cache...');
+    console.log('📊 Parâmetros de busca:', { subject, level, context, similarityThreshold });
+
+    // Buscar cursos com subject similar primeiro (busca básica)
+    const { data: courses, error } = await supabase
+      .from('courses')
+      .select(`
+        *,
+        modules:course_modules(
+          id,
+          title,
+          description,
+          module_order,
+          level,
+          estimated_hours,
+          estimated_duration,
+          learning_objectives,
+          created_at,
+          updated_at
+        ),
+        topics:course_topics(
+          id,
+          title,
+          description,
+          detailed_description,
+          module_title,
+          module_description,
+          module_order,
+          order_index,
+          completed,
+          learning_objectives,
+          key_terms,
+          search_keywords,
+          difficulty,
+          estimated_duration,
+          academic_content,
+          videos,
+          aula_texto,
+          has_doubt_button,
+          content_type,
+          created_at,
+          updated_at
+        )
+      `)
+      .eq('level', level)
+      .order('created_at', { ascending: false })
+      .limit(50); // Limitar para performance
+
+    if (error) {
+      console.warn('⚠️ Erro na busca de cursos similares:', error);
+      return null;
+    }
+
+    if (!courses || courses.length === 0) {
+      console.log('📝 Nenhum curso encontrado no cache');
+      return null;
+    }
+
+    console.log(`📊 Encontrados ${courses.length} cursos para análise de similaridade`);
+
+    // Calcular similaridade para cada curso
+    const coursesWithSimilarity = courses.map(course => {
+      const subjectSimilarity = calculateSimilarity(subject, course.subject || course.title);
+
+      // Se há contexto, considerar na similaridade
+      let contextSimilarity = 1.0;
+      if (context && course.description) {
+        contextSimilarity = calculateSimilarity(context, course.description);
+      }
+
+      // Média ponderada: subject tem mais peso
+      const finalSimilarity = (subjectSimilarity * 0.8) + (contextSimilarity * 0.2);
+
+      return {
+        ...course,
+        similarity: finalSimilarity
+      };
+    });
+
+    // Ordenar por similaridade (maior primeiro)
+    coursesWithSimilarity.sort((a, b) => b.similarity - a.similarity);
+
+    const bestMatch = coursesWithSimilarity[0];
+
+    console.log('🎯 Melhor match encontrado:');
+    console.log(`   📚 Curso: ${bestMatch.title}`);
+    console.log(`   📊 Similaridade: ${(bestMatch.similarity * 100).toFixed(1)}%`);
+    console.log(`   🎓 Level: ${bestMatch.level}`);
+    console.log(`   📅 Criado: ${new Date(bestMatch.created_at).toLocaleDateString()}`);
+
+    // Verificar se atende ao threshold
+    if (bestMatch.similarity >= similarityThreshold) {
+      console.log('✅ Curso similar encontrado! Usando do cache.');
+
+      // Ordenar tópicos por order_index
+      if (bestMatch.topics) {
+        bestMatch.topics.sort((a: any, b: any) => a.order_index - b.order_index);
+      }
+
+      return bestMatch;
+    } else {
+      console.log(`❌ Similaridade insuficiente (${(bestMatch.similarity * 100).toFixed(1)}% < ${(similarityThreshold * 100)}%)`);
+      console.log('🔄 Será necessário gerar novo curso');
+      return null;
+    }
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar curso similar:', error);
+    return null;
+  }
+}
+
+// Salvar curso no cache com hash para busca rápida
+export async function saveCourseToCache(learningPlan: LearningPlan): Promise<Course> {
+  try {
+    console.log('💾 Salvando curso no cache...');
+
+    // Gerar hash para busca rápida futura
+    const courseHash = generateCourseHash(
+      learningPlan.goal.title,
+      learningPlan.goal.level,
+      learningPlan.goal.description
+    );
+
+    // Salvar com metadados adicionais para cache
+    const courseWithCacheData = {
+      ...learningPlan,
+      goal: {
+        ...learningPlan.goal,
+        cacheHash: courseHash,
+        isCached: true,
+        originalGenerationDate: new Date().toISOString()
+      }
+    };
+
+    const savedCourse = await saveCourse(courseWithCacheData);
+
+    console.log('✅ Curso salvo no cache com hash:', courseHash);
+    return savedCourse;
+
+  } catch (error) {
+    console.error('❌ Erro ao salvar curso no cache:', error);
+    throw error;
+  }
+}
+
+// Verificar se existe curso exato no cache (por hash)
+export async function findExactCourseInCache(
+  subject: string,
+  level: string,
+  context?: string
+): Promise<Course | null> {
+  try {
+    const hash = generateCourseHash(subject, level, context);
+    const normalizedSubject = normalizeCourseTitle(subject);
+
+    console.log('🔍 Buscando curso no cache:', {
+      originalSubject: subject,
+      normalizedSubject,
+      level,
+      hash
+    });
+
+    // ETAPA 1: Busca por hash exato (mais rápida)
+    console.log('🎯 Buscando por hash exato:', hash);
+    const { data: hashCourses, error: hashError } = await supabase
+      .from('courses')
+      .select(`
+        *,
+        modules:course_modules(
+          id,
+          title,
+          description,
+          module_order,
+          level,
+          estimated_hours,
+          estimated_duration,
+          learning_objectives,
+          created_at,
+          updated_at
+        ),
+        topics:course_topics(
+          id,
+          title,
+          description,
+          detailed_description,
+          module_title,
+          module_description,
+          module_order,
+          order_index,
+          completed,
+          learning_objectives,
+          key_terms,
+          search_keywords,
+          difficulty,
+          estimated_duration,
+          academic_content,
+          videos,
+          aula_texto,
+          has_doubt_button,
+          content_type,
+          created_at,
+          updated_at
+        )
+      `)
+      .eq('cache_hash', hash)
+      .limit(1);
+
+    if (!hashError && hashCourses && hashCourses.length > 0) {
+      const exactMatch = hashCourses[0];
+      console.log('✅ Curso encontrado por hash exato:', exactMatch.title);
+
+      // Ordenar tópicos
+      if (exactMatch.topics) {
+        exactMatch.topics.sort((a: any, b: any) => a.order_index - b.order_index);
+      }
+
+      return exactMatch;
+    }
+
+    // ETAPA 2: Busca por título normalizado e level
+    console.log('🔍 Buscando por título normalizado e level...');
+    const { data: courses, error } = await supabase
+      .from('courses')
+      .select(`
+        *,
+        modules:course_modules(
+          id,
+          title,
+          description,
+          module_order,
+          level,
+          estimated_hours,
+          estimated_duration,
+          learning_objectives,
+          created_at,
+          updated_at
+        ),
+        topics:course_topics(
+          id,
+          title,
+          description,
+          detailed_description,
+          module_title,
+          module_description,
+          module_order,
+          order_index,
+          completed,
+          learning_objectives,
+          key_terms,
+          search_keywords,
+          difficulty,
+          estimated_duration,
+          academic_content,
+          videos,
+          aula_texto,
+          has_doubt_button,
+          content_type,
+          created_at,
+          updated_at
+        )
+      `)
+      .eq('level', level)
+      .limit(100);
+
+    if (error || !courses || courses.length === 0) {
+      console.log('❌ Nenhum curso encontrado no nível:', level);
+      return null;
+    }
+
+    console.log(`📊 Encontrados ${courses.length} cursos no nível ${level}, verificando similaridade...`);
+
+    // ETAPA 3: Buscar por similaridade de título
+    let bestMatch: any = null;
+    let bestScore = 0;
+
+    for (const course of courses) {
+      const courseNormalizedTitle = normalizeCourseTitle(course.title);
+      const similarity = calculateSimilarity(normalizedSubject, courseNormalizedTitle);
+
+      console.log(`📝 "${course.title}" → "${courseNormalizedTitle}" → similaridade: ${(similarity * 100).toFixed(1)}%`);
+
+      // Considerar match se similaridade > 80%
+      if (similarity > 0.8 && similarity > bestScore) {
+        bestMatch = course;
+        bestScore = similarity;
+      }
+    }
+
+    if (bestMatch) {
+      console.log(`🎯 Melhor match encontrado: "${bestMatch.title}" (${bestScore}% similaridade)`);
+
+      // Ordenar tópicos
+      if (bestMatch.topics) {
+        bestMatch.topics.sort((a: any, b: any) => a.order_index - b.order_index);
+      }
+
+      return bestMatch;
+    }
+
+    // ETAPA 4: Fallback - buscar sem filtro de level (apenas por similaridade)
+    console.log('🔄 Tentando busca sem filtro de level...');
+
+    const { data: allCourses, error: allCoursesError } = await supabase
+      .from('courses')
+      .select(`
+        *,
+        topics:course_topics(
+          id,
+          title,
+          description,
+          module_title,
+          order_index,
+          completed,
+          academic_content,
+          videos,
+          created_at,
+          updated_at
+        )
+      `)
+      .limit(100)
+      .order('created_at', { ascending: false });
+
+    if (!allCoursesError && allCourses && allCourses.length > 0) {
+      console.log(`📊 Buscando em ${allCourses.length} cursos sem filtro de level...`);
+
+      let fallbackMatch: any = null;
+      let fallbackScore = 0;
+
+      for (const course of allCourses) {
+        const courseNormalizedTitle = normalizeCourseTitle(course.title);
+        const similarity = calculateSimilarity(normalizedSubject, courseNormalizedTitle);
+
+        if (similarity > 0.9 && similarity > fallbackScore) { // Critério mais rigoroso sem level
+          fallbackMatch = course;
+          fallbackScore = similarity;
+        }
+      }
+
+      if (fallbackMatch) {
+        console.log(`🎯 Curso encontrado via fallback: "${fallbackMatch.title}" (${(fallbackScore * 100).toFixed(1)}% similaridade)`);
+        console.log(`⚠️ Curso tem level "${fallbackMatch.level}" diferente de "${level}"`);
+
+        // Ordenar tópicos
+        if (fallbackMatch.topics) {
+          fallbackMatch.topics.sort((a: any, b: any) => a.order_index - b.order_index);
+        }
+
+        return fallbackMatch;
+      }
+    }
+
+    console.log('❌ Nenhum curso similar encontrado no cache (incluindo fallbacks)');
+    return null;
+
+  } catch (error) {
+    console.error('❌ Erro na busca exata no cache:', error);
+    return null;
   }
 }

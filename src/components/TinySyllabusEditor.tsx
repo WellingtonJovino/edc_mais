@@ -34,17 +34,13 @@ interface SyllabusData {
 interface TinySyllabusEditorProps {
   syllabus: SyllabusData;
   onSyllabusUpdate: (updatedSyllabus: SyllabusData) => void;
-  onCreateCourse: (finalSyllabus: SyllabusData) => void;
   onCancel: () => void;
-  isCreating?: boolean;
 }
 
 export default function TinySyllabusEditor({
   syllabus,
   onSyllabusUpdate,
-  onCreateCourse,
-  onCancel,
-  isCreating = false
+  onCancel
 }: TinySyllabusEditorProps) {
   const editorRef = useRef<any>(null);
   const [content, setContent] = useState('');
@@ -87,20 +83,78 @@ export default function TinySyllabusEditor({
 
   // Converter HTML de volta para syllabus
   const htmlToSyllabus = (html: string): SyllabusData => {
-    // Esta é uma implementação simplificada
-    // Em um caso real, seria melhor usar um parser HTML mais robusto
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = html;
 
     const title = tempDiv.querySelector('h1')?.textContent || syllabus.title;
     const description = tempDiv.querySelector('p em')?.textContent || syllabus.description;
 
+    // Extrair módulos do HTML
+    const modules: SyllabusData['modules'] = [];
+    const h2Elements = tempDiv.querySelectorAll('h2');
+
+    h2Elements.forEach((h2, moduleIndex) => {
+      const moduleTitle = h2.textContent || '';
+
+      // Encontrar a lista ordenada que vem logo após o h2
+      let nextElement = h2.nextElementSibling;
+      while (nextElement && nextElement.tagName !== 'OL' && nextElement.tagName !== 'H2') {
+        nextElement = nextElement.nextElementSibling;
+      }
+
+      const topics: SyllabusData['modules'][0]['topics'] = [];
+
+      if (nextElement && nextElement.tagName === 'OL') {
+        const liElements = nextElement.querySelectorAll(':scope > li');
+
+        liElements.forEach((li, topicIndex) => {
+          const topicTitle = li.childNodes[0]?.textContent?.trim() || '';
+          const strongElement = li.querySelector('strong');
+          const finalTopicTitle = strongElement ? strongElement.textContent || '' : topicTitle;
+
+          // Extrair subtópicos se existirem
+          const subtopics: string[] = [];
+          const subOl = li.querySelector('ol[type="a"]');
+
+          if (subOl) {
+            const subLiElements = subOl.querySelectorAll('li');
+            subLiElements.forEach(subLi => {
+              const subtopicText = subLi.textContent?.trim();
+              if (subtopicText) {
+                subtopics.push(subtopicText);
+              }
+            });
+          }
+
+          topics.push({
+            id: `topic-${moduleIndex}-${topicIndex}`,
+            title: finalTopicTitle,
+            description: '',
+            order: topicIndex + 1,
+            estimatedDuration: '45 min',
+            subtopics: subtopics.length > 0 ? subtopics : undefined
+          });
+        });
+      }
+
+      // Extrair o número do módulo e o título
+      const cleanTitle = moduleTitle.replace(/^\d+\.\s*/, '');
+
+      modules.push({
+        id: `module-${moduleIndex}`,
+        title: cleanTitle,
+        description: '',
+        order: moduleIndex + 1,
+        estimatedDuration: '2-3 semanas',
+        topics
+      });
+    });
+
     return {
       ...syllabus,
       title,
       description,
-      // Por simplicidade, mantemos a estrutura original dos módulos
-      // Em uma implementação completa, parseariamos o HTML para extrair mudanças
+      modules: modules.length > 0 ? modules : syllabus.modules
     };
   };
 
@@ -113,126 +167,124 @@ export default function TinySyllabusEditor({
   const handleEditorChange = (content: string) => {
     setContent(content);
 
-    // Atualizar syllabus baseado no conteúdo editado
+    // Tentar atualizar o syllabus, mas sem validações restritivas
     try {
       const updatedSyllabus = htmlToSyllabus(content);
       onSyllabusUpdate(updatedSyllabus);
     } catch (error) {
-      console.warn('Erro ao converter HTML para syllabus:', error);
+      // Em caso de erro, apenas log - não bloquear edição
+      console.warn('Erro ao processar conteúdo editado:', error);
     }
   };
 
-  const handleCreateCourse = () => {
-    if (editorRef.current) {
-      const finalContent = editorRef.current.getContent();
-      const finalSyllabus = htmlToSyllabus(finalContent);
-      onCreateCourse(finalSyllabus);
-    }
-  };
 
   const totalTopics = syllabus.modules.reduce((sum, module) => sum + module.topics.length, 0);
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Editor */}
-      <div className="flex-1">
-        <Editor
-          ref={editorRef}
-          apiKey={apiKey || "no-api-key"}
-          value={content}
-          onEditorChange={handleEditorChange}
-          init={{
-            height: 500,
-            menubar: false,
-            plugins: [
-              'lists', 'link', 'autolink', 'searchreplace', 'visualblocks',
-              'code', 'fullscreen', 'insertdatetime', 'media', 'table',
-              'help', 'wordcount', 'paste'
-            ],
-            toolbar: 'undo redo | bold italic | numlist bullist | outdent indent | removeformat | help',
-            content_style: `
-              body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                font-size: 14px;
-                line-height: 1.6;
-                max-width: none;
-                margin: 1rem;
-                color: #374151;
-              }
-              h1 {
-                color: #1f2937;
-                font-size: 20px;
-                font-weight: 600;
-                margin: 0 0 16px 0;
-              }
-              h2 {
-                color: #1f2937;
-                font-size: 16px;
-                font-weight: 600;
-                margin: 16px 0 8px 0;
-              }
-              ol {
-                margin: 0 0 16px 0;
-                padding-left: 20px;
-              }
-              ol ol {
-                margin: 4px 0 4px 0;
-              }
-              li {
-                margin-bottom: 4px;
-                line-height: 1.5;
-              }
-              p {
-                margin: 0 0 8px 0;
-                color: #6b7280;
-              }
-              strong {
-                font-weight: 600;
-                color: #1f2937;
-              }
-            `,
-            paste_data_images: true,
-            paste_as_text: false,
-            smart_paste: true,
-            automatic_uploads: true,
-            file_picker_types: 'image',
-            setup: (editor: any) => {
-              editor.on('init', () => {
-                console.log('TinyMCE Editor initialized');
-              });
-            },
-            branding: false,
-            promotion: false,
-            statusbar: true,
-            resize: 'vertical',
-            min_height: 400,
-            max_height: 600
-          }}
-        />
-      </div>
+    <div className="h-full">
+      <Editor
+        ref={editorRef}
+        apiKey={apiKey || "no-api-key"}
+        value={content}
+        onEditorChange={handleEditorChange}
+        init={{
+          height: '100%',
+          menubar: false,
+          plugins: [
+            'lists', 'link', 'autolink', 'searchreplace', 'visualblocks',
+            'code', 'fullscreen', 'insertdatetime', 'media', 'table',
+            'help', 'wordcount', 'paste', 'charmap', 'preview', 'anchor',
+            'textcolor', 'colorpicker'
+          ],
+          toolbar: 'undo redo | formatselect | bold italic underline | alignleft aligncenter alignright alignjustify | numlist bullist | outdent indent | removeformat | addModule addTopic | code help',
+          content_style: `
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              font-size: 14px;
+              line-height: 1.6;
+              max-width: none;
+              margin: 1rem;
+              color: #374151;
+            }
+            h1 {
+              color: #1f2937;
+              font-size: 20px;
+              font-weight: 600;
+              margin: 0 0 16px 0;
+            }
+            h2 {
+              color: #1f2937;
+              font-size: 16px;
+              font-weight: 600;
+              margin: 16px 0 8px 0;
+            }
+            ol {
+              margin: 0 0 16px 0;
+              padding-left: 20px;
+            }
+            ol ol {
+              margin: 4px 0 4px 0;
+            }
+            li {
+              margin-bottom: 4px;
+              line-height: 1.5;
+            }
+            p {
+              margin: 0 0 8px 0;
+              color: #6b7280;
+            }
+            strong {
+              font-weight: 600;
+              color: #1f2937;
+            }
+          `,
+          // Configurações essenciais para funcionamento correto
+          forced_root_block: 'p',
+          newline_behavior: 'default',
+          entity_encoding: 'raw',
+          extended_valid_elements: '*[*]',
+          valid_children: '+body[style]',
+          convert_newlines_to_brs: false,
+          remove_linebreaks: false,
+          force_br_newlines: false,
+          force_p_newlines: true,
 
-      {/* Actions */}
-      <div className="p-4">
-        <div className="flex items-center justify-center">
-          <button
-            onClick={handleCreateCourse}
-            disabled={isCreating}
-            className="w-full max-w-md flex items-center justify-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          >
-            {isCreating ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                <span>Criando Curso...</span>
-              </>
-            ) : (
-              <>
-                <BookOpen className="w-4 h-4" />
-                <span>Gerar Curso</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
+          // Configurações de paste e upload
+          paste_data_images: true,
+          paste_as_text: false,
+          smart_paste: true,
+          automatic_uploads: true,
+          file_picker_types: 'image',
+          setup: (editor: any) => {
+            editor.on('init', () => {
+              console.log('TinyMCE Editor initialized');
+            });
+
+            // Adicionar comandos customizados para facilitar edição de estrutura
+            editor.ui.registry.addButton('addModule', {
+              text: 'Adicionar Módulo',
+              onAction: () => {
+                const content = editor.getContent();
+                const moduleNumber = (content.match(/<h2>/g) || []).length + 1;
+                const newModule = `<h2>${moduleNumber}. Novo Módulo</h2><ol><li><strong>Novo Tópico</strong></li></ol>`;
+                editor.execCommand('mceInsertContent', false, newModule);
+              }
+            });
+
+            editor.ui.registry.addButton('addTopic', {
+              text: 'Adicionar Tópico',
+              onAction: () => {
+                editor.execCommand('mceInsertContent', false, '<li><strong>Novo Tópico</strong></li>');
+              }
+            });
+          },
+          branding: false,
+          promotion: false,
+          statusbar: true,
+          min_height: 300,
+          resize: false
+        }}
+      />
     </div>
   );
 }

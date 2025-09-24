@@ -63,7 +63,7 @@ export default function ChatInterface({
             <h3 className="text-lg font-medium mb-2">👋 Olá! Sou seu assistente educacional</h3>
             <p>Conte qual área você quer estudar e criarei um curso científico com aulas estruturadas, vídeos especializados e exercícios.</p>
             <div className="mt-4 text-xs text-gray-400">
-              💡 Exemplo: "Quero aprender Cálculo I para Engenharia Civil"
+              💡 Exemplo: &ldquo;Quero aprender Cálculo I para Engenharia Civil&rdquo;
             </div>
           </div>
         ) : (
@@ -118,9 +118,10 @@ export default function ChatInterface({
             {loadingProgress ? (
               <LoadingProgress
                 currentStep={loadingProgress.currentStep}
-                totalSteps={5}
+                totalSteps={uploadedFiles.length > 0 ? 5 : 4}
                 progress={loadingProgress.progress}
                 isComplete={loadingProgress.isComplete}
+                hasUploadedFiles={uploadedFiles.length > 0}
               />
             ) : (
               <div className="bg-white border border-gray-200 rounded-lg px-4 py-2">

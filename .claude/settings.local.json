@@ -23,7 +23,9 @@
       "Bash(mkdir:*)",
       "Bash(find:*)",
       "Bash(git mv:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(npm audit:*)",
+      "Bash(git show-branch:*)"
     ],
     "deny": [],
     "ask": []

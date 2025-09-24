@@ -21,9 +21,6 @@ const WEB_SEARCH_CONFIG = {
 // Domínios especializados por área
 const DOMAIN_SETS = {
   academic_general: [
-    'ocw.mit.edu',
-    'oyc.yale.edu',
-    'oli.cmu.edu',
     'coursera.org',
     'edx.org',
     'khanacademy.org',
@@ -38,6 +35,16 @@ const DOMAIN_SETS = {
     'ufsc.br',
     'puc-rio.br',
     'mackenzie.br'
+  ],
+
+  international_universities: [
+    'harvard.edu',
+    'mit.edu',
+    'stanford.edu',
+    'cambridge.ac.uk',
+    'ox.ac.uk',
+    'ethz.ch',
+    'utoronto.ca'
   ],
 
   engineering_standards: [
@@ -72,9 +79,6 @@ const DOMAIN_SETS = {
   ],
 
   business_finance: [
-    'harvard.edu',
-    'wharton.upenn.edu',
-    'insead.edu',
     'investopedia.com',
     'mckinsey.com',
     'bain.com'
@@ -155,7 +159,11 @@ export async function openaiWebSearch(
 
     if (options.domain_category && !allowed_domains) {
       if (options.domain_category === 'all_edu') {
-        allowed_domains = ['edu', 'ac.uk', 'edu.br', 'ac.jp', 'edu.au'];
+        allowed_domains = [
+          ...DOMAIN_SETS.academic_general,
+          ...DOMAIN_SETS.brazilian_universities,
+          ...DOMAIN_SETS.international_universities
+        ];
       } else {
         allowed_domains = DOMAIN_SETS[options.domain_category];
       }
@@ -164,6 +172,12 @@ export async function openaiWebSearch(
     // Se contexto brasileiro estiver habilitado, adicionar universidades brasileiras
     if (WEB_SEARCH_CONFIG.enableBrazilianContext && allowed_domains) {
       allowed_domains = [...allowed_domains, ...DOMAIN_SETS.brazilian_universities];
+    }
+
+    // Limitar a 20 domínios (limite da API OpenAI)
+    if (allowed_domains && allowed_domains.length > 20) {
+      console.log(`⚠️ Limitando domínios de ${allowed_domains.length} para 20 (limite da API)`);
+      allowed_domains = allowed_domains.slice(0, 20);
     }
 
     // Configurar ferramentas
@@ -213,6 +227,20 @@ export async function openaiWebSearch(
   } catch (error) {
     console.error('❌ Erro na busca web OpenAI:', error);
 
+    // Se erro for relacionado a domínios inválidos ou array muito longo, tentar sem filtros
+    if (error instanceof Error && (
+      error.message.includes('Invalid domain') ||
+      error.message.includes('array too long') ||
+      error.message.includes('array_above_max_length')
+    )) {
+      console.log('🔄 Tentando novamente sem filtros de domínio...');
+      return openaiWebSearch(query, {
+        ...options,
+        allowed_domains: undefined,
+        domain_category: undefined
+      });
+    }
+
     // Fallback mais simples se disponível
     if (options.mode !== 'quick') {
       console.log('🔄 Tentando novamente com busca rápida...');
@@ -233,13 +261,19 @@ export async function searchUniversitySyllabi(
 ): Promise<WebSearchResult> {
   console.log(`🎓 Buscando ementas universitárias para ${subject} (${level})`);
 
-  const domains = [
+  let domains = [
     ...DOMAIN_SETS.academic_general,
     ...DOMAIN_SETS.brazilian_universities
   ];
 
   if (includeInternational) {
-    domains.push('edu', 'ac.uk', 'edu.au', 'ac.jp');
+    domains.push(...DOMAIN_SETS.international_universities);
+  }
+
+  // Limitar a 20 domínios (limite da API OpenAI)
+  if (domains.length > 20) {
+    console.log(`⚠️ Limitando domínios universitários de ${domains.length} para 20`);
+    domains = domains.slice(0, 20);
   }
 
   const query = `"${subject}" syllabus curriculum "${level}" university course outline topics`;
@@ -338,9 +372,9 @@ export async function comprehensiveCurriculumSearch(
     searchQueries = domainSpecificConfig.searchQueries.map(query =>
       `${query} ${domainSpecificConfig.additionalTerms.join(' ')}`
     );
-    // Filtrar apenas domínios válidos e não usar site: syntax que está causando erro
+    // Filtrar apenas domínios válidos (domínios completos com TLD)
     const validDomains = domainSpecificConfig.domains.filter(domain =>
-      !domain.includes('edu') && domain.includes('.')
+      domain.includes('.') && !domain.match(/^[a-z]+$/)
     );
     domainFilter = validDomains.length > 0 ? validDomains[0] : undefined;
   } else {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BookOpen, Brain, Youtube, Upload, FileText } from 'lucide-react';
+import { BookOpen, Brain, Youtube, Upload, FileText, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ChatInterface from '@/components/ChatInterface';
@@ -48,6 +48,17 @@ export default function HomePage() {
     progress: 0,
     isComplete: false,
   });
+
+  // Estado para loading de geração de curso
+  const [isGeneratingCourse, setIsGeneratingCourse] = useState(false);
+  const [courseGenerationProgress, setCourseGenerationProgress] = useState(0);
+
+  // Estado para popup de confirmação
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Estados para animações de transição
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [showFloatingElements, setShowFloatingElements] = useState(false);
 
   // Sistema de progresso em tempo real com SSE
   const [sessionId, setSessionId] = useState<string>('');
@@ -115,6 +126,27 @@ export default function HomePage() {
   }, [eventSource]);
 
   const handleSendMessage = async (message: string, files?: UploadedFile[]) => {
+    // Detectar comando para gerar curso principal
+    const generateCourseCommands = [
+      'gerar curso',
+      'criar curso',
+      'gerar as aulas',
+      'criar as aulas',
+      'aprovar',
+      'aprovar estrutura',
+      'gerar o curso',
+      'criar o curso'
+    ];
+
+    const isGenerateCourseCommand = generateCourseCommands.some(cmd =>
+      message.toLowerCase().includes(cmd)
+    );
+
+    if (isGenerateCourseCommand && currentSyllabus) {
+      await handleCreateCourseFromChat(message);
+      return;
+    }
+
     // Detectar comando para gerar curso de pré-requisito
     const prerequisiteMatch = message.match(/gerar\s+curso\s+de\s+(.+)/i);
     if (prerequisiteMatch) {
@@ -376,40 +408,10 @@ Perfil de Aprendizado:
 
         setCurrentSyllabus(syllabusData);
 
-        // Construir mensagem de resposta com informações de pré-requisitos
-        let responseContent = `✨ Estrutura do curso criada!
+        // Construir mensagem de resposta simplificada
+        let responseContent = `✨ Estrutura do curso criada com sucesso!
 
-📋 "${syllabusData.title}"`;
-
-        // Adicionar detalhes dos pré-requisitos se existirem
-        if (data.structure.goal.prerequisites && data.structure.goal.prerequisites.length > 0) {
-          responseContent += `\n\n⚠️ ATENÇÃO: Pré-requisitos Identificados
-
-Para fazer este curso com sucesso, você precisa ter conhecimento prévio em:
-
-`;
-
-          data.structure.goal.prerequisites.forEach((prereq: any, index: number) => {
-            const importanceIcon = prereq.importance === 'essential' ? '🔴' :
-                                  prereq.importance === 'recommended' ? '🟡' : '🟢';
-
-            responseContent += `${importanceIcon} ${prereq.topic}
-   ${prereq.description}
-
-`;
-          });
-
-          responseContent += `Recomendação: Certifique-se de dominar esses conceitos antes de prosseguir.`;
-        }
-
-        responseContent += `
-
-Agora você pode:
-• Editar livremente - Adicione, remova ou modifique tópicos no editor
-• Reorganizar - Mude a ordem dos módulos e tópicos
-• Personalizar - Ajuste o conteúdo às suas necessidades
-
-🤖 Precisa de ajuda da IA? Você pode me pedir para:
+Você pode editar a estrutura no painel ao lado ou me pedir para:
 • Adicionar mais tópicos específicos
 • Reorganizar a estrutura
 • Mudar o nível de dificuldade
@@ -423,7 +425,7 @@ Agora você pode:
 
         responseContent += `
 
-Quando estiver satisfeito, clique em "Gerar Curso" para criar as aulas!`;
+Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas as aulas para você! 🚀`;
 
         // Adicionar mensagem de sucesso
         const successMessage: ChatMessage = {
@@ -474,64 +476,263 @@ Quando estiver satisfeito, clique em "Gerar Curso" para criar as aulas!`;
   };
 
   const handleCreateCourse = async (finalSyllabus: SyllabusData) => {
-    setIsCreatingCourse(true);
+    // Iniciar loading de geração
+    setIsGeneratingCourse(true);
+    setCourseGenerationProgress(0);
+
+    // Gerar sessionId único para rastreamento
+    const courseSessionId = `course_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     try {
-      const response = await fetch('/api/create-course', {
+      // Iniciar criação de curso com aulas automáticas
+      const response = await fetch('/api/create-course-with-lessons', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          sessionId: courseSessionId,
           syllabus: finalSyllabus,
-          uploadedFiles: uploadedFiles
+          uploadedFiles: uploadedFiles,
+          generateLessons: true
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Falha ao criar curso');
+        throw new Error('Falha ao iniciar criação do curso');
       }
 
       const data = await response.json();
 
-      if (data.success && data.courseId) {
-        // Adicionar mensagem de sucesso
-        const successMessage: ChatMessage = {
-          id: `msg-course-created-${Date.now()}`,
-          role: 'assistant',
-          content: '🎉 Curso criado com sucesso! Redirecionando para a página do curso...',
-          timestamp: new Date().toISOString(),
-        };
-        setMessages(prev => [...prev, successMessage]);
+      if (data.success && data.sessionId) {
+        // Conectar ao SSE para acompanhar progresso
+        const eventSource = new EventSource(`/api/create-course-with-lessons?sessionId=${courseSessionId}`);
 
-        // Redirecionar para o curso
+        eventSource.onmessage = (event) => {
+          try {
+            const progressData = JSON.parse(event.data);
+
+            if (progressData.type === 'progress') {
+              setCourseGenerationProgress(progressData.progress);
+
+              // Log detalhado do progresso
+              console.log(`📊 ${progressData.phase} - ${progressData.progress}%`, {
+                currentSubtopic: progressData.currentSubtopic,
+                completedLessons: progressData.completedLessons,
+                totalLessons: progressData.totalLessons
+              });
+            }
+            else if (progressData.type === 'completed') {
+              // Curso e aulas criados com sucesso
+              eventSource.close();
+              setCourseGenerationProgress(100);
+
+              // Armazenar curso no localStorage para página de curso
+              if (progressData.result && progressData.result.course) {
+                localStorage.setItem(`course_${progressData.result.courseId}`, JSON.stringify(progressData.result.course));
+              }
+
+              // Aguardar um momento para mostrar 100% e redirecionar
+              setTimeout(() => {
+                router.push(`/courses/${progressData.result.courseId}`);
+              }, 1500);
+            }
+            else if (progressData.type === 'error') {
+              eventSource.close();
+              throw new Error(progressData.error || 'Erro durante criação do curso');
+            }
+          } catch (parseError) {
+            console.error('Erro ao processar progresso:', parseError);
+            eventSource.close();
+            throw new Error('Erro na comunicação com servidor');
+          }
+        };
+
+        eventSource.onerror = (error) => {
+          console.error('Erro no EventSource:', error);
+          eventSource.close();
+          throw new Error('Conexão perdida com servidor');
+        };
+
+        // Timeout de segurança (10 minutos)
         setTimeout(() => {
-          router.push(`/courses/${data.courseId}`);
-        }, 2000);
+          eventSource.close();
+          throw new Error('Timeout na geração do curso');
+        }, 10 * 60 * 1000);
+
       } else {
-        throw new Error(data.error || 'Erro ao criar curso');
+        throw new Error(data.error || 'Erro ao iniciar criação do curso');
       }
     } catch (error) {
       console.error('Erro ao criar curso:', error);
+      setIsGeneratingCourse(false);
+      setCourseGenerationProgress(0);
 
       const errorMessage: ChatMessage = {
         id: `msg-course-error-${Date.now()}`,
         role: 'assistant',
-        content: 'Erro ao criar o curso. Tente novamente.',
+        content: `❌ Erro ao criar o curso: ${error instanceof Error ? error.message : 'Erro desconhecido'}. Tente novamente.`,
         timestamp: new Date().toISOString(),
       };
 
       setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsCreatingCourse(false);
     }
   };
 
   const handleSyllabusCancel = () => {
-    setCurrentSyllabus(null);
-    setMessages([]);
+    setShowDeleteConfirm(true);
   };
 
+  const confirmDeleteSyllabus = () => {
+    setCurrentSyllabus(null);
+    setMessages([]);
+    setShowDeleteConfirm(false);
+  };
+
+  const cancelDeleteSyllabus = () => {
+    setShowDeleteConfirm(false);
+  };
+
+  const handleCreateCourseFromChat = async (message: string) => {
+    if (!currentSyllabus) return;
+
+    // Adicionar mensagem do usuário
+    const userMessage: ChatMessage = {
+      id: `msg-user-${Date.now()}`,
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, userMessage]);
+
+    // Adicionar mensagem de confirmação
+    const confirmMessage: ChatMessage = {
+      id: `msg-confirm-${Date.now()}`,
+      role: 'assistant',
+      content: '🚀 Perfeito! Vou gerar o curso completo agora. Preparando todas as aulas, vídeos e exercícios...',
+      timestamp: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, confirmMessage]);
+
+    // Aguardar um momento para mostrar a mensagem
+    setTimeout(() => {
+      // Iniciar animação de elementos flutuantes
+      setShowFloatingElements(true);
+
+      // Iniciar animação de saída após elementos flutuantes aparecerem
+      setTimeout(() => {
+        setIsTransitioning(true);
+      }, 300);
+
+      // Após animação de saída, iniciar loading
+      setTimeout(() => {
+        handleCreateCourse(currentSyllabus);
+      }, 1200);
+
+      // Limpar elementos flutuantes após a animação completa
+      setTimeout(() => {
+        setShowFloatingElements(false);
+        setIsTransitioning(false);
+      }, 2000);
+    }, 1500);
+  };
+
+
+  // Mostrar tela de loading de geração se necessário
+  if (isGeneratingCourse) {
+    return (
+      <div className="h-screen flex flex-col overflow-hidden" style={{
+        background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%)'
+      }}>
+        {/* Header simplificado durante loading */}
+        <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 shadow-md flex-shrink-0">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                  <Brain className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold text-gray-900">EDC+ Plataforma Educacional</h1>
+                  <p className="text-sm text-gray-600">Gerando seu curso personalizado...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Loading Screen */}
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center max-w-2xl mx-auto px-4">
+            {/* Animação principal */}
+            <div className="relative mb-8">
+              <div className="w-32 h-32 mx-auto relative">
+                {/* Círculo exterior girando */}
+                <div className="absolute inset-0 border-4 border-blue-200 rounded-full animate-spin border-t-blue-600"></div>
+                {/* Círculo interior pulsando */}
+                <div className="absolute inset-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full animate-pulse flex items-center justify-center">
+                  <BookOpen className="w-12 h-12 text-white animate-bounce" />
+                </div>
+              </div>
+
+              {/* Partículas flutuantes */}
+              <div className="absolute top-0 left-1/2 transform -translate-x-1/2">
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-ping"></div>
+              </div>
+              <div className="absolute top-8 right-8">
+                <div className="w-1 h-1 bg-purple-400 rounded-full animate-ping animation-delay-75"></div>
+              </div>
+              <div className="absolute bottom-8 left-8">
+                <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-ping animation-delay-150"></div>
+              </div>
+            </div>
+
+            {/* Texto e progresso */}
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              🚀 Criando Seu Curso Personalizado
+            </h2>
+            <p className="text-lg text-gray-700 mb-8">
+              Nossa IA está trabalhando para gerar todo o conteúdo educacional do seu curso.<br/>
+              <span className="text-blue-600 font-medium">Isso pode levar alguns momentos...</span>
+            </p>
+
+            {/* Barra de progresso dinâmica */}
+            <div className="mb-6">
+              <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden shadow-inner">
+                <div
+                  className="bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-600 h-full rounded-full transition-all duration-500 ease-out relative overflow-hidden"
+                  style={{ width: `${courseGenerationProgress}%` }}
+                >
+                  {/* Efeito shimmer */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
+                </div>
+              </div>
+              <div className="flex justify-between text-sm text-gray-600 mt-2">
+                <span>Gerando conteúdo...</span>
+                <span className="font-medium">{Math.round(courseGenerationProgress)}%</span>
+              </div>
+            </div>
+
+            {/* Steps indicativos */}
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div className={`p-3 rounded-lg ${courseGenerationProgress >= 10 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                <div className="text-2xl mb-1">🏗️</div>
+                <div className="text-sm font-medium">Criando Estrutura</div>
+              </div>
+              <div className={`p-3 rounded-lg ${courseGenerationProgress >= 20 ? 'bg-green-100 text-green-800' : courseGenerationProgress >= 10 ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}>
+                <div className="text-2xl mb-1">✍️</div>
+                <div className="text-sm font-medium">Gerando Aulas-Texto</div>
+              </div>
+              <div className={`p-3 rounded-lg ${courseGenerationProgress >= 95 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                <div className="text-2xl mb-1">🎯</div>
+                <div className="text-sm font-medium">Finalizando Curso</div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col overflow-hidden" style={{
@@ -565,10 +766,75 @@ Quando estiver satisfeito, clique em "Gerar Curso" para criar as aulas!`;
         </div>
       </header>
 
+      {/* Floating Elements Overlay - Video-like animation */}
+      {showFloatingElements && (
+        <div className="fixed inset-0 z-40 pointer-events-none overflow-hidden">
+          {/* Chat messages floating up */}
+          <div className="absolute left-1/4 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+            <div className="w-64 h-16 bg-white rounded-lg shadow-lg border border-gray-200 animate-float-merge opacity-80">
+              <div className="p-3">
+                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full float-left mr-3"></div>
+                <div className="space-y-1">
+                  <div className="h-2 bg-gray-200 rounded w-3/4"></div>
+                  <div className="h-2 bg-gray-200 rounded w-1/2"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Syllabus structure floating */}
+          <div className="absolute right-1/4 top-1/3 transform translate-x-1/2 -translate-y-1/2">
+            <div className="w-56 h-32 bg-white rounded-lg shadow-lg border border-gray-200 animate-float-merge-delayed opacity-80">
+              <div className="p-3">
+                <div className="h-3 bg-gradient-to-r from-blue-400 to-purple-500 rounded mb-2"></div>
+                <div className="space-y-2">
+                  <div className="h-2 bg-gray-200 rounded w-full"></div>
+                  <div className="h-2 bg-gray-200 rounded w-5/6"></div>
+                  <div className="h-2 bg-gray-200 rounded w-4/5"></div>
+                  <div className="h-2 bg-gray-200 rounded w-3/4"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* File elements floating */}
+          <div className="absolute left-1/3 bottom-1/3 transform -translate-x-1/2 translate-y-1/2">
+            <div className="w-16 h-16 bg-blue-100 rounded-lg shadow-lg animate-float-spiral opacity-70 flex items-center justify-center">
+              <FileText className="w-8 h-8 text-blue-600" />
+            </div>
+          </div>
+
+          {/* Brain icon floating */}
+          <div className="absolute right-1/3 bottom-1/4 transform translate-x-1/2 translate-y-1/2">
+            <div className="w-20 h-20 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full shadow-lg animate-float-pulse opacity-80 flex items-center justify-center">
+              <Brain className="w-10 h-10 text-white" />
+            </div>
+          </div>
+
+          {/* Sparkling particles */}
+          <div className="absolute top-1/4 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+            <div className="w-3 h-3 bg-yellow-400 rounded-full animate-ping-slow opacity-60"></div>
+          </div>
+          <div className="absolute top-3/4 right-1/4">
+            <div className="w-2 h-2 bg-blue-400 rounded-full animate-ping opacity-50 animation-delay-300"></div>
+          </div>
+          <div className="absolute bottom-1/2 left-1/4">
+            <div className="w-4 h-4 bg-purple-400 rounded-full animate-pulse opacity-40 animation-delay-500"></div>
+          </div>
+
+          {/* Convergence effect - all elements move toward center */}
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+            <div className="w-32 h-32 border-4 border-dashed border-blue-400 rounded-full animate-spin-slow opacity-30"></div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
+          <div className={`grid grid-cols-1 lg:grid-cols-2 gap-8 h-full transition-all duration-1000 ${
+            isTransitioning ? 'opacity-0 scale-90 transform rotate-1 filter blur-sm' : 'opacity-100 scale-100'
+          }`}>
             {/* Chat Panel */}
             <div className="bg-white rounded-lg border border-gray-200 flex flex-col h-full overflow-hidden">
               <div className="p-4 border-b border-gray-200 flex-shrink-0">
@@ -600,15 +866,21 @@ Quando estiver satisfeito, clique em "Gerar Curso" para criar as aulas!`;
             </div>
 
             {/* Syllabus/Learning Plan Panel */}
-            <div className="h-full overflow-hidden">
+            <div className={`flex flex-col h-full overflow-hidden ${currentSyllabus ? 'bg-white rounded-lg border border-gray-200' : ''}`}>
               {currentSyllabus ? (
-                <TinySyllabusEditor
-                  syllabus={currentSyllabus}
-                  onSyllabusUpdate={handleSyllabusUpdate}
-                  onCreateCourse={handleCreateCourse}
-                  onCancel={handleSyllabusCancel}
-                  isCreating={isCreatingCourse}
-                />
+                <div className="flex-1 min-h-0 overflow-hidden relative">
+                  <button
+                    onClick={handleSyllabusCancel}
+                    className="absolute top-2 right-2 z-10 text-gray-500 hover:text-gray-700 transition-colors bg-white rounded-full p-1 shadow-sm"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  <TinySyllabusEditor
+                    syllabus={currentSyllabus}
+                    onSyllabusUpdate={handleSyllabusUpdate}
+                    onCancel={handleSyllabusCancel}
+                  />
+                </div>
               ) : (
                 <div className="h-full flex items-center justify-center text-center">
                   <div className="max-w-md">
@@ -627,6 +899,39 @@ Quando estiver satisfeito, clique em "Gerar Curso" para criar as aulas!`;
           </div>
         </div>
       </main>
+
+      {/* Popup de Confirmação para Excluir Estrutura */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <div className="flex items-center mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-3">
+                <X className="w-5 h-5 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Excluir Estrutura do Curso</h3>
+            </div>
+
+            <p className="text-gray-600 mb-6">
+              Tem certeza que deseja excluir a estrutura do curso criada? Esta ação não pode ser desfeita e você precisará gerar uma nova estrutura.
+            </p>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={cancelDeleteSyllabus}
+                className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteSyllabus}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* File Upload Modal */}
       {showFileUpload && (

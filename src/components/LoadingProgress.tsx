@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Brain, Search, BookOpen, Sparkles, CheckCircle, FileText } from 'lucide-react';
+import { Brain, Search, BookOpen, Sparkles, CheckCircle, FileText, Wand2, PenTool } from 'lucide-react';
 
 export interface LoadingStep {
   id: string;
@@ -18,7 +18,80 @@ export interface LoadingProgressProps {
   steps?: LoadingStep[];
   isComplete?: boolean;
   onProgressUpdate?: (progress: number) => void;
+  hasUploadedFiles?: boolean; // Nova prop para determinar se há arquivos
+  // Novas props para geração de aulas
+  generateLessons?: boolean;
+  currentPhase?: string;
+  currentSubtopic?: string;
+  completedLessons?: number;
+  totalLessons?: number;
 }
+
+// Função para gerar steps baseado na presença de arquivos e geração de aulas
+export const getStepsForSession = (hasUploadedFiles: boolean, generateLessons: boolean = false): LoadingStep[] => {
+  const baseSteps: LoadingStep[] = [
+    {
+      id: 'analyzing',
+      label: 'Analisando objetivo',
+      icon: Brain,
+      description: 'Processando sua solicitação e identificando o domínio de conhecimento'
+    },
+    {
+      id: 'researching',
+      label: hasUploadedFiles ? 'Pesquisando conteúdo' : 'Pesquisando conteúdo',
+      icon: Search,
+      description: hasUploadedFiles
+        ? 'Buscando referências acadêmicas e processando documentos enviados'
+        : 'Buscando referências acadêmicas e tópicos especializados'
+    }
+  ];
+
+  // Adicionar etapa de extração apenas se há arquivos
+  if (hasUploadedFiles) {
+    baseSteps.push({
+      id: 'extracting',
+      label: 'Extraindo documentos',
+      icon: FileText,
+      description: 'Processando arquivos enviados e extraindo conteúdo relevante'
+    });
+  }
+
+  // Adicionar etapas finais
+  baseSteps.push(
+    {
+      id: 'structuring',
+      label: 'Estruturando curso',
+      icon: BookOpen,
+      description: 'Organizando módulos e criando sequência pedagógica'
+    },
+    {
+      id: 'validating',
+      label: 'Validando qualidade',
+      icon: Sparkles,
+      description: 'Aplicando critérios acadêmicos e validação científica'
+    }
+  );
+
+  // Adicionar etapas de geração de aulas se necessário
+  if (generateLessons) {
+    baseSteps.push(
+      {
+        id: 'generating_lessons',
+        label: 'Gerando aulas-texto',
+        icon: Wand2,
+        description: 'Criando aulas-texto profissionais com IA para cada subtópico'
+      },
+      {
+        id: 'finalizing_course',
+        label: 'Finalizando curso',
+        icon: CheckCircle,
+        description: 'Integrando aulas e preparando curso completo'
+      }
+    );
+  }
+
+  return baseSteps;
+};
 
 const defaultSteps: LoadingStep[] = [
   {
@@ -26,12 +99,6 @@ const defaultSteps: LoadingStep[] = [
     label: 'Analisando objetivo',
     icon: Brain,
     description: 'Processando sua solicitação e identificando o domínio de conhecimento'
-  },
-  {
-    id: 'extracting',
-    label: 'Extraindo documentos',
-    icon: FileText,
-    description: 'Processando arquivos enviados e extraindo conteúdo relevante'
   },
   {
     id: 'researching',
@@ -58,10 +125,18 @@ export default function LoadingProgress({
   totalSteps,
   stepName,
   progress,
-  steps = defaultSteps,
+  steps,
   isComplete = false,
-  onProgressUpdate
+  onProgressUpdate,
+  hasUploadedFiles = false,
+  generateLessons = false,
+  currentPhase,
+  currentSubtopic,
+  completedLessons,
+  totalLessons
 }: LoadingProgressProps) {
+  // Usar steps condicionais se não foram fornecidos steps customizados
+  const effectiveSteps = steps || getStepsForSession(hasUploadedFiles, generateLessons);
   const [animatedProgress, setAnimatedProgress] = useState(0);
   const [targetProgress, setTargetProgress] = useState(0);
   const [isStuck, setIsStuck] = useState(false);
@@ -109,7 +184,13 @@ export default function LoadingProgress({
         <div className="mb-6">
           <div className="flex justify-between items-center mb-3">
             <span className="text-lg font-semibold text-gray-900">
-              {isComplete ? 'Curso Gerado com Sucesso!' : 'Gerando Estrutura do Curso'}
+              {isComplete
+                ? (generateLessons ? 'Curso Completo Gerado com Sucesso!' : 'Curso Gerado com Sucesso!')
+                : (generateLessons && currentPhase
+                    ? currentPhase
+                    : 'Gerando Estrutura do Curso'
+                  )
+              }
             </span>
             <span className="text-lg font-bold text-blue-600">{Math.round(animatedProgress)}%</span>
           </div>
@@ -145,9 +226,38 @@ export default function LoadingProgress({
             )}
           </div>
 
+          {/* Seção especial para progresso de aulas */}
+          {generateLessons && totalLessons && totalLessons > 0 && (
+            <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Wand2 className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-900">Geração de Aulas-Texto</span>
+                </div>
+                <span className="text-sm font-semibold text-blue-700">
+                  {completedLessons || 0} / {totalLessons}
+                </span>
+              </div>
+
+              {currentSubtopic && (
+                <div className="text-xs text-blue-700 mb-2 flex items-center gap-1">
+                  <PenTool className="w-3 h-3" />
+                  <span className="truncate">Gerando: {currentSubtopic}</span>
+                </div>
+              )}
+
+              <div className="w-full bg-blue-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${totalLessons > 0 ? ((completedLessons || 0) / totalLessons) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Steps minimalistas */}
           <div className="flex justify-between items-center">
-            {steps.map((step, index) => {
+            {effectiveSteps.map((step, index) => {
               const stepNumber = index + 1;
               const isActive = stepNumber === currentStep;
               const isCompleted = stepNumber < currentStep || isComplete;

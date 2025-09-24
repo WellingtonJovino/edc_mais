@@ -51,6 +51,11 @@ export interface Course {
     courseAssessment?: any;
     personalizedContent?: boolean;
   };
+
+  // Cache properties for course reuse
+  cacheHash?: string;
+  isCached?: boolean;
+  originalGenerationDate?: string;
 }
 
 // Manter LearningGoal como alias para compatibilidade
@@ -70,6 +75,8 @@ export interface Module {
   completed: boolean;
   estimatedDuration: string;
   color?: string; // Para diferenciação visual
+  level?: string; // Nível de dificuldade do módulo
+  estimatedHours?: number; // Horas estimadas para conclusão
 
   // Para organização pedagógica
   learningObjectives?: string[]; // Objetivos gerais do módulo
