@@ -175,7 +175,7 @@ export default function LoadingProgress({
   }, [animatedProgress, targetProgress, onProgressUpdate]);
 
   return (
-    <div className="w-full max-w-2xl mx-auto bg-white border border-gray-200 rounded-xl shadow-sm p-6 relative overflow-hidden">
+    <div className="w-full max-w-2xl mx-auto bg-white border border-gray-200 rounded-xl shadow-sm p-6 relative overflow-hidden animate-in fade-in-50 slide-in-from-bottom-3 duration-500">
       {/* Gradiente sutil de fundo */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-indigo-50/30 pointer-events-none"></div>
 

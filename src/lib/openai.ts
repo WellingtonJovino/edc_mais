@@ -97,7 +97,13 @@ export interface SyllabusData {
       description?: string;
       order: number;
       estimatedDuration?: string;
-      subtopics?: string[];
+      subtopics?: Array<string | {
+        id: string;
+        title: string;
+        description?: string;
+        order: number;
+        estimatedDuration?: string;
+      }>;
     }>;
   }>;
   totalDuration?: string;
@@ -2140,7 +2146,26 @@ export async function generateCourseSyllabus(
             description: topic.descricao || topic.description || '',
             order: topic.ordem || topic.order || topicIndex + 1,
             estimatedDuration: topic.duracaoEstimada || topic.estimatedDuration || '30 min',
-            subtopics: topic.subtopicos || topic.subtopics || []
+            subtopics: (topic.subtopicos || topic.subtopics || []).map((subtopic: any, subIndex: number) => {
+              // Se subtopic é uma string, converter para objeto
+              if (typeof subtopic === 'string') {
+                return {
+                  id: `subtopic-${topicIndex + 1}-${subIndex + 1}`,
+                  title: subtopic,
+                  description: '',
+                  order: subIndex + 1,
+                  estimatedDuration: '15 min'
+                };
+              }
+              // Se já é um objeto, mapear propriedades
+              return {
+                id: subtopic.id || `subtopic-${topicIndex + 1}-${subIndex + 1}`,
+                title: subtopic.titulo || subtopic.title || subtopic,
+                description: subtopic.descricao || subtopic.description || '',
+                order: subtopic.ordem || subtopic.order || subIndex + 1,
+                estimatedDuration: subtopic.duracaoEstimada || subtopic.estimatedDuration || '15 min'
+              };
+            })
           }))
         }));
       }
@@ -2293,7 +2318,24 @@ export async function generateCourseSyllabus(
             description: `Tópico sobre ${topic.title}`,
             order: 1,
             estimatedDuration: `${Math.round(60 / topicStructure.length)} min`,
-            subtopics: topic.subtopics || []
+            subtopics: (topic.subtopics || []).map((subtopic: any, subIndex: number) => {
+              if (typeof subtopic === 'string') {
+                return {
+                  id: `subtopic-${i + 1}-${subIndex + 1}`,
+                  title: subtopic,
+                  description: '',
+                  order: subIndex + 1,
+                  estimatedDuration: '15 min'
+                };
+              }
+              return {
+                id: subtopic.id || `subtopic-${i + 1}-${subIndex + 1}`,
+                title: subtopic.title || subtopic,
+                description: subtopic.description || '',
+                order: subtopic.order || subIndex + 1,
+                estimatedDuration: subtopic.estimatedDuration || '15 min'
+              };
+            })
           }))
         });
       }
@@ -2335,7 +2377,11 @@ export async function generateCourseSyllabus(
                 description: 'Visão geral do assunto',
                 order: 1,
                 estimatedDuration: '30 min',
-                subtopics: ['Definições', 'Importância', 'Aplicações']
+                subtopics: [
+                  { id: 'sub-1', title: 'Definições', description: '', order: 1, estimatedDuration: '10 min' },
+                  { id: 'sub-2', title: 'Importância', description: '', order: 2, estimatedDuration: '10 min' },
+                  { id: 'sub-3', title: 'Aplicações', description: '', order: 3, estimatedDuration: '10 min' }
+                ]
               }
             ]
           }

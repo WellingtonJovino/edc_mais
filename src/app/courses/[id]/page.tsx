@@ -77,8 +77,27 @@ export default function CoursePage() {
           const courseData = JSON.parse(storedCourse);
           console.log('📚 Carregando curso do localStorage:', courseData.title);
 
+          // Debug: verificar dados brutos antes da conversão
+          console.log('🔍 Dados brutos do curso:', {
+            syllabusData: courseData.syllabus_data,
+            firstModule: courseData.syllabus_data?.modules?.[0],
+            firstTopic: courseData.syllabus_data?.modules?.[0]?.topics?.[0],
+            subtopicsRaw: courseData.syllabus_data?.modules?.[0]?.topics?.[0]?.subtopics
+          });
+
           // Converter dados do syllabus para estrutura da página
           const convertedCourse = convertSyllabusToPageStructure(courseData);
+
+          // Debug: verificar estrutura dos subtópicos
+          console.log('📊 Estrutura do curso convertida:', {
+            title: convertedCourse.title,
+            modulesCount: convertedCourse.modules.length,
+            firstModule: convertedCourse.modules[0]?.title,
+            firstTopic: convertedCourse.modules[0]?.topics[0]?.title,
+            firstTopicSubtopicsCount: convertedCourse.modules[0]?.topics[0]?.subtopics?.length,
+            firstSubtopic: convertedCourse.modules[0]?.topics[0]?.subtopics?.[0]
+          });
+
           setCourse(convertedCourse);
           setLoading(false);
           return;
@@ -399,7 +418,9 @@ export default function CoursePage() {
                       {/* Subtópicos */}
                       {expandedTopics.has(topic.id) && (
                         <div className="ml-6 mt-1 space-y-1">
-                          {topic.subtopics.map((subtopic) => (
+                          {console.log(`📝 Renderizando subtópicos do tópico ${topic.title}:`, topic.subtopics)}
+                          {topic.subtopics && topic.subtopics.length > 0 ? (
+                            topic.subtopics.map((subtopic) => (
                             <button
                               key={subtopic.id}
                               onClick={() => selectSubtopic(subtopic)}
@@ -424,7 +445,10 @@ export default function CoursePage() {
                                 <span>{subtopic.estimatedDuration}</span>
                               </div>
                             </button>
-                          ))}
+                          ))
+                          ) : (
+                            <div className="ml-4 text-xs text-gray-400">Nenhum subtópico encontrado</div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -561,17 +585,34 @@ function convertSyllabusToPageStructure(courseData: any): Course {
         title: topic.title,
         description: topic.description || '',
         order: topic.order || topicIndex + 1,
-        subtopics: (topic.subtopics || []).map((subtopic: any, subtopicIndex: number) => ({
-          id: subtopic.id || `sub_${subtopicIndex}`,
-          title: subtopic.title,
-          description: subtopic.description || '',
-          order: subtopic.order || subtopicIndex + 1,
-          estimatedDuration: subtopic.estimatedDuration || subtopic.duration || '45 min',
-          completed: false,
-          theory: subtopic.theory || null, // Aula-texto gerada
-          videos: subtopic.videos || [],
-          exercises: subtopic.exercises || []
-        }))
+        subtopics: (topic.subtopics || []).map((subtopic: any, subtopicIndex: number) => {
+          // Verificar se é string e converter para objeto
+          if (typeof subtopic === 'string') {
+            return {
+              id: `sub_${topicIndex}_${subtopicIndex}`,
+              title: subtopic,
+              description: '',
+              order: subtopicIndex + 1,
+              estimatedDuration: '45 min',
+              completed: false,
+              theory: null,
+              videos: [],
+              exercises: []
+            };
+          }
+          // Se já é objeto, garantir todas as propriedades
+          return {
+            id: subtopic.id || `sub_${topicIndex}_${subtopicIndex}`,
+            title: subtopic.title || subtopic.name || subtopic.titulo || 'Subtópico sem título',
+            description: subtopic.description || subtopic.descricao || '',
+            order: subtopic.order || subtopic.ordem || subtopicIndex + 1,
+            estimatedDuration: subtopic.estimatedDuration || subtopic.duration || subtopic.duracaoEstimada || '45 min',
+            completed: false,
+            theory: subtopic.theory || subtopic.teoria || null,
+            videos: subtopic.videos || [],
+            exercises: subtopic.exercises || subtopic.exercicios || []
+          };
+        })
       }))
     }))
   };

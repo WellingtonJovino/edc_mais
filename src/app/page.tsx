@@ -633,7 +633,7 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
     };
     setMessages(prev => [...prev, userMessage]);
 
-    // Adicionar mensagem de confirmação
+    // Adicionar mensagem de confirmação com animação
     const confirmMessage: ChatMessage = {
       id: `msg-confirm-${Date.now()}`,
       role: 'assistant',
@@ -642,32 +642,41 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
     };
     setMessages(prev => [...prev, confirmMessage]);
 
-    // Iniciar transição unificada com requestAnimationFrame
+    // Iniciar transição com delay menor para fluidez
     setTimeout(() => {
       startSmoothTransition();
-    }, 1000);
+    }, 800);
   };
 
   // Função para transição suave unificada
   const startSmoothTransition = () => {
     let progress = 0;
-    const duration = 3000; // 3 segundos para transição mais suave
+    const duration = 2500; // Reduzido para transição mais ágil
     const startTime = performance.now();
     let courseCreationStarted = false;
+    let phaseStarted = false;
 
-    const easeInOutCubic = (t: number) => {
-      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    // Curva de animação personalizada para transição cinematográfica
+    const easeInOutQuart = (t: number) => {
+      return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
     };
 
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
       const linearProgress = Math.min(elapsed / duration, 1);
-      progress = easeInOutCubic(linearProgress) * 100;
+      progress = easeInOutQuart(linearProgress) * 100;
 
       setTransitionProgress(progress);
 
-      // Iniciar criação do curso quando a transição chegar a 85% (mais perto do final)
-      if (progress >= 85 && !courseCreationStarted) {
+      // Adicionar efeitos visuais em momentos específicos
+      if (progress >= 30 && !phaseStarted) {
+        phaseStarted = true;
+        // Adicionar classe para efeito de blur progressivo
+        document.body.classList.add('transitioning');
+      }
+
+      // Iniciar criação do curso quando a transição chegar a 75%
+      if (progress >= 75 && !courseCreationStarted && currentSyllabus) {
         courseCreationStarted = true;
         handleCreateCourse(currentSyllabus);
       }
@@ -675,6 +684,11 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
       // Continuar animação até completar
       if (progress < 100) {
         requestAnimationFrame(animate);
+      } else {
+        // Remover classe de transição
+        setTimeout(() => {
+          document.body.classList.remove('transitioning');
+        }, 300);
       }
     };
 
@@ -685,8 +699,11 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
   // Mostrar tela de loading de geração se necessário
   if (isGeneratingCourse) {
     return (
-      <div className="h-screen flex flex-col overflow-hidden animate-in fade-in duration-300" style={{
-        background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%)'
+      <div className="h-screen flex flex-col overflow-hidden" style={{
+        background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%)',
+        animation: 'fadeInScale 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards',
+        opacity: 0,
+        transform: 'scale(0.95) translateZ(0)'
       }}>
         {/* Header simplificado durante loading */}
         <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 shadow-md flex-shrink-0">
@@ -783,11 +800,13 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
       className="h-screen flex flex-col overflow-hidden"
       style={{
         background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%)',
-        transform: `scale(${1 + (transitionProgress * 0.05) / 100})`,
-        filter: `brightness(${100 + (transitionProgress * 20) / 100}%)`,
-        opacity: Math.max(0, 1 - (transitionProgress / 100)),
+        transform: `scale(${1 + (transitionProgress * 0.08) / 100}) translateZ(0)`,
+        filter: `brightness(${100 + (transitionProgress * 30) / 100}%) blur(${(transitionProgress * 0.5) / 100}px)`,
+        opacity: Math.max(0, Math.cos((transitionProgress * Math.PI) / 200)),
         transition: 'none',
-        willChange: 'transform, filter, opacity'
+        willChange: 'transform, filter, opacity',
+        backfaceVisibility: 'hidden',
+        perspective: '1000px'
       }}
     >
       {/* Header */}
