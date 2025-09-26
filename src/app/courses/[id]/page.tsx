@@ -13,8 +13,11 @@ import {
   CheckCircle,
   Circle,
   Wand2,
-  Loader2
+  Loader2,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
+import LessonContent from '@/components/LessonContent';
 
 // Estrutura de dados temporária - depois virá do banco
 interface Course {
@@ -65,6 +68,8 @@ export default function CoursePage() {
   const [activeTab, setActiveTab] = useState<'theory' | 'videos' | 'exercises'>('theory');
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
+  const [generatingLesson, setGeneratingLesson] = useState<string | null>(null);
+  const [lessonCache, setLessonCache] = useState<Map<string, any>>(new Map());
 
   // Carregar dados reais do curso
   useEffect(() => {
@@ -95,10 +100,27 @@ export default function CoursePage() {
             firstModule: convertedCourse.modules[0]?.title,
             firstTopic: convertedCourse.modules[0]?.topics[0]?.title,
             firstTopicSubtopicsCount: convertedCourse.modules[0]?.topics[0]?.subtopics?.length,
-            firstSubtopic: convertedCourse.modules[0]?.topics[0]?.subtopics?.[0]
+            firstSubtopic: convertedCourse.modules[0]?.topics[0]?.subtopics?.[0],
+            hasLessons: !!courseData.lessons
           });
 
+          // Se houver aulas geradas, integrá-las ao curso
+          if (courseData.lessons) {
+            console.log('🎓 Aulas encontradas no localStorage:', Object.keys(courseData.lessons).length);
+          }
+
           setCourse(convertedCourse);
+
+          // Selecionar primeiro subtópico e expandir primeiro módulo
+          if (convertedCourse.modules[0]) {
+            setExpandedModules(new Set([convertedCourse.modules[0].id]));
+            if (convertedCourse.modules[0].topics[0]) {
+              setExpandedTopics(new Set([convertedCourse.modules[0].topics[0].id]));
+              if (convertedCourse.modules[0].topics[0].subtopics[0]) {
+                setSelectedSubtopic(convertedCourse.modules[0].topics[0].subtopics[0]);
+              }
+            }
+          }
           setLoading(false);
           return;
         }
@@ -221,6 +243,85 @@ export default function CoursePage() {
   const selectSubtopic = (subtopic: Subtopic) => {
     setSelectedSubtopic(subtopic);
     setActiveTab('theory'); // Sempre abrir na aba teoria
+  };
+
+  const generateLesson = async (subtopic: Subtopic, topic: Topic) => {
+    const lessonKey = subtopic.id;
+
+    // Verificar cache
+    if (lessonCache.has(lessonKey)) {
+      const cachedLesson = lessonCache.get(lessonKey);
+      setSelectedSubtopic({
+        ...subtopic,
+        theory: cachedLesson.content
+      });
+      return;
+    }
+
+    setGeneratingLesson(lessonKey);
+
+    try {
+      const response = await fetch('/api/generate-lesson', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          topic: topic.title,
+          subtopic: subtopic.title,
+          level: 'intermediate'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Falha ao gerar aula');
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Salvar no cache
+        setLessonCache(prev => new Map(prev).set(lessonKey, data));
+
+        // Atualizar o subtópico selecionado
+        setSelectedSubtopic({
+          ...subtopic,
+          theory: data.content
+        });
+
+        // Atualizar o curso na memória
+        setCourse(prevCourse => {
+          if (!prevCourse) return prevCourse;
+
+          const updatedCourse = { ...prevCourse };
+          updatedCourse.modules.forEach(module => {
+            module.topics.forEach(t => {
+              t.subtopics.forEach(s => {
+                if (s.id === subtopic.id) {
+                  s.theory = data.content;
+                }
+              });
+            });
+          });
+
+          // Salvar no localStorage
+          const courseDataToSave = {
+            id: courseId,
+            title: updatedCourse.title,
+            description: updatedCourse.description,
+            syllabus_data: updatedCourse
+          };
+          localStorage.setItem(`course_${courseId}`, JSON.stringify(courseDataToSave));
+
+          return updatedCourse;
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao gerar aula:', error);
+      alert('Erro ao gerar aula-texto. Tente novamente.');
+    } finally {
+      setGeneratingLesson(null);
+    }
   };
 
 
@@ -418,7 +519,6 @@ export default function CoursePage() {
                       {/* Subtópicos */}
                       {expandedTopics.has(topic.id) && (
                         <div className="ml-6 mt-1 space-y-1">
-                          {console.log(`📝 Renderizando subtópicos do tópico ${topic.title}:`, topic.subtopics)}
                           {topic.subtopics && topic.subtopics.length > 0 ? (
                             topic.subtopics.map((subtopic) => (
                             <button
@@ -515,19 +615,77 @@ export default function CoursePage() {
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
                       <div className="flex items-center justify-between mb-6">
                         <h3 className="text-xl font-bold text-gray-900">Aula-Texto</h3>
+                        <button
+                          onClick={() => {
+                            const currentTopic = course?.modules
+                              .flatMap(m => m.topics)
+                              .find(t => t.subtopics.some(s => s.id === selectedSubtopic.id));
+                            if (currentTopic) {
+                              // Limpar cache e regenerar
+                              setLessonCache(prev => {
+                                const newCache = new Map(prev);
+                                newCache.delete(selectedSubtopic.id);
+                                return newCache;
+                              });
+                              generateLesson(selectedSubtopic, currentTopic);
+                            }
+                          }}
+                          disabled={generatingLesson === selectedSubtopic.id}
+                          className="flex items-center space-x-2 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${generatingLesson === selectedSubtopic.id ? 'animate-spin' : ''}`} />
+                          <span>Regenerar</span>
+                        </button>
                       </div>
-                      <div className="prose prose-lg max-w-none">
-                        <p>{selectedSubtopic.theory}</p>
-                      </div>
+                      <LessonContent
+                        content={selectedSubtopic.theory}
+                        isLoading={generatingLesson === selectedSubtopic.id}
+                      />
                     </div>
                   ) : (
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
                       <div className="text-center py-12">
-                        <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-xl font-bold text-gray-900 mb-2">Conteúdo em preparação</h3>
-                        <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                          O conteúdo teórico deste subtópico será disponibilizado em breve.
-                        </p>
+                        {generatingLesson === selectedSubtopic.id ? (
+                          <>
+                            <div className="animate-pulse">
+                              <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Sparkles className="w-8 h-8 text-blue-600 animate-spin" />
+                              </div>
+                              <h3 className="text-xl font-bold text-gray-900 mb-2">Gerando Aula-Texto</h3>
+                              <p className="text-gray-600 mb-2">Criando conteúdo educacional personalizado...</p>
+                              <div className="flex items-center justify-center space-x-1">
+                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">Aula-Texto não gerada</h3>
+                            <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                              Clique no botão abaixo para gerar o conteúdo teórico desta aula com inteligência artificial.
+                            </p>
+                            <button
+                              onClick={() => {
+                                const currentTopic = course?.modules
+                                  .flatMap(m => m.topics)
+                                  .find(t => t.subtopics.some(s => s.id === selectedSubtopic.id));
+                                if (currentTopic) {
+                                  generateLesson(selectedSubtopic, currentTopic);
+                                }
+                              }}
+                              className="inline-flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-colors shadow-lg hover:shadow-xl"
+                            >
+                              <Sparkles className="w-5 h-5" />
+                              <span className="font-medium">Gerar Aula-Texto</span>
+                            </button>
+                            <p className="text-xs text-gray-500 mt-4">
+                              Tempo estimado: 15-30 segundos
+                            </p>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}

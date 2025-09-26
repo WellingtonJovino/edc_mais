@@ -1,0 +1,153 @@
+/* Estilos para o conteúdo da aula */
+.lesson-content {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  line-height: 1.8;
+  color: #1a202c;
+}
+
+/* Placeholder de imagem */
+.lesson-image-placeholder {
+  margin: 2rem 0;
+  padding: 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 1rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.lesson-image-placeholder:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+}
+
+.image-loading {
+  text-align: center;
+  padding: 2rem;
+  background: white;
+  border-radius: 0.75rem;
+}
+
+.image-icon {
+  font-size: 3rem;
+  display: inline-block;
+  margin-bottom: 1rem;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.image-description {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 0.5rem;
+}
+
+.image-status {
+  font-size: 0.875rem;
+  color: #718096;
+  font-style: italic;
+}
+
+/* Animação de loading */
+.generating-animation {
+  display: inline-block;
+  animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Seções da aula */
+.lesson-section {
+  margin-bottom: 2rem;
+}
+
+.lesson-objectives {
+  background: #f7fafc;
+  border-left: 4px solid #4299e1;
+  padding: 1rem 1.5rem;
+  border-radius: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.lesson-objectives ul {
+  margin: 0.5rem 0 0 1rem;
+  padding: 0;
+}
+
+.lesson-summary {
+  background: linear-gradient(135deg, #e6fffa 0%, #e6f7ff 100%);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  margin-top: 2rem;
+}
+
+.lesson-tip {
+  background: #fef5e7;
+  border: 2px solid #ffc107;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-top: 1.5rem;
+  position: relative;
+}
+
+.lesson-tip::before {
+  content: '💡';
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: white;
+  padding: 0 8px;
+  font-size: 1.25rem;
+}
+
+/* Estilos para código dentro da aula */
+.lesson-code {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* Estilos para exemplos práticos */
+.practical-example {
+  background: #f0f9ff;
+  border: 2px dashed #3b82f6;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.practical-example-title {
+  font-weight: 600;
+  color: #1e40af;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.practical-example-title::before {
+  content: '🔧';
+}

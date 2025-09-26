@@ -59,6 +59,14 @@ export default function HomePage() {
   // Estado unificado para transição suave
   const [transitionProgress, setTransitionProgress] = useState(0);
 
+  // Estado para geração de aulas
+  const [lessonGenerationStatus, setLessonGenerationStatus] = useState<{
+    current: number;
+    total: number;
+    currentLesson: string;
+    phase: string;
+  } | null>(null);
+
   // Estados derivados do progresso para compatibilidade
   const isTransitioning = transitionProgress > 0 && transitionProgress < 100;
   const showFloatingElements = transitionProgress > 10 && transitionProgress < 90;
@@ -531,13 +539,13 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
   const handleCreateCourse = async (finalSyllabus: SyllabusData) => {
     // Iniciar loading de geração
     setIsGeneratingCourse(true);
-    setCourseGenerationProgress(0);
+    setCourseGenerationProgress(5);
 
-    // Gerar sessionId único para rastreamento
+    // Gerar sessionId único para rastreamento de aulas
     const courseSessionId = `course_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     try {
-      // Iniciar criação de curso
+      // Iniciar criação de curso com sessionId para geração de aulas
       const response = await fetch('/api/create-course', {
         method: 'POST',
         headers: {
@@ -545,7 +553,8 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
         },
         body: JSON.stringify({
           syllabus: finalSyllabus,
-          uploadedFiles: uploadedFiles
+          uploadedFiles: uploadedFiles,
+          sessionId: courseSessionId
         }),
       });
 
@@ -556,37 +565,113 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
       const data = await response.json();
 
       if (data.success && data.courseId) {
-        // Simular progresso de criação com loading suave e contínuo
-        let progress = 10;
-        const targetProgress = 100;
-        const totalDuration = 4000; // 4 segundos total
-        const startTime = Date.now();
+        setCourseGenerationProgress(10);
 
-        const progressInterval = setInterval(() => {
-          const elapsed = Date.now() - startTime;
-          const percentComplete = Math.min(elapsed / totalDuration, 1);
+        // Se está gerando aulas, conectar ao SSE para acompanhar progresso
+        if (data.generatingLessons && data.sessionId) {
+          const eventSource = new EventSource(
+            `/api/generate-first-module-lessons?sessionId=${data.sessionId}`
+          );
 
-          // Função de easing para suavizar o progresso
-          const easeOutQuart = 1 - Math.pow(1 - percentComplete, 4);
-          progress = 10 + (easeOutQuart * 90); // De 10% a 100%
+          eventSource.onmessage = (event) => {
+            try {
+              const progressData = JSON.parse(event.data);
 
-          setCourseGenerationProgress(progress);
+              if (progressData.status === 'generating') {
+                // Calcular progresso baseado nas aulas geradas
+                const lessonProgress = (progressData.current / progressData.total) * 80; // 80% para aulas
+                const totalProgress = 10 + lessonProgress; // 10% inicial + progresso das aulas
 
-          if (progress >= 99.5) {
-            clearInterval(progressInterval);
-            setCourseGenerationProgress(100);
+                setCourseGenerationProgress(totalProgress);
+                setLessonGenerationStatus({
+                  current: progressData.current,
+                  total: progressData.total,
+                  currentLesson: progressData.message,
+                  phase: 'Gerando aulas-texto do primeiro módulo',
+                });
+              } else if (progressData.status === 'completed') {
+                eventSource.close();
+                setCourseGenerationProgress(95);
+                setLessonGenerationStatus(null);
 
-            // Armazenar curso no localStorage para página de curso
-            if (data.course) {
-              localStorage.setItem(`course_${data.courseId}`, JSON.stringify(data.course));
+                // Armazenar curso com aulas no localStorage
+                if (data.course && progressData.lessons) {
+                  // Atualizar syllabus com as aulas geradas
+                  const updatedSyllabus = { ...data.course.syllabus_data };
+                  if (updatedSyllabus.modules && updatedSyllabus.modules[0]) {
+                    updatedSyllabus.modules[0].topics.forEach((topic: any) => {
+                      if (topic.subtopics) {
+                        topic.subtopics.forEach((subtopic: any) => {
+                          const subtopicId = subtopic.id || `sub_${topic.id}_${topic.subtopics.indexOf(subtopic)}`;
+                          if (progressData.lessons[subtopicId]) {
+                            subtopic.theory = progressData.lessons[subtopicId];
+                          }
+                        });
+                      }
+                    });
+                  }
+
+                  const courseWithLessons = {
+                    ...data.course,
+                    syllabus_data: updatedSyllabus,
+                  };
+                  localStorage.setItem(`course_${data.courseId}`, JSON.stringify(courseWithLessons));
+                }
+
+                // Finalizar e redirecionar
+                setTimeout(() => {
+                  setCourseGenerationProgress(100);
+                  setTimeout(() => {
+                    window.location.href = `/courses/${data.courseId}`;
+                  }, 500);
+                }, 300);
+              } else if (progressData.status === 'error' || progressData.error) {
+                eventSource.close();
+                throw new Error(progressData.error || 'Erro ao gerar aulas');
+              }
+            } catch (error) {
+              console.error('Erro ao processar progresso:', error);
             }
+          };
 
-            // Redirecionamento automático imediato quando chegar a 100%
+          eventSource.onerror = () => {
+            eventSource.close();
+            console.error('Erro na conexão SSE');
+            // Continuar mesmo com erro nas aulas
+            setCourseGenerationProgress(100);
             setTimeout(() => {
               window.location.href = `/courses/${data.courseId}`;
-            }, 200); // Delay mínimo para garantir que o 100% seja visível
-          }
-        }, 50); // Atualiza a cada 50ms para animação mais suave
+            }, 500);
+          };
+        } else {
+          // Sem geração de aulas, progresso simples
+          let progress = 10;
+          const targetProgress = 100;
+          const totalDuration = 3000;
+          const startTime = Date.now();
+
+          const progressInterval = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            const percentComplete = Math.min(elapsed / totalDuration, 1);
+            const easeOutQuart = 1 - Math.pow(1 - percentComplete, 4);
+            progress = 10 + (easeOutQuart * 90);
+
+            setCourseGenerationProgress(progress);
+
+            if (progress >= 99.5) {
+              clearInterval(progressInterval);
+              setCourseGenerationProgress(100);
+
+              if (data.course) {
+                localStorage.setItem(`course_${data.courseId}`, JSON.stringify(data.course));
+              }
+
+              setTimeout(() => {
+                window.location.href = `/courses/${data.courseId}`;
+              }, 200);
+            }
+          }, 50);
+        }
 
       } else {
         throw new Error(data.error || 'Falha ao criar o curso');
@@ -753,8 +838,19 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
               🚀 Criando Seu Curso Personalizado
             </h2>
             <p className="text-lg text-gray-700 mb-8">
-              Nossa IA está trabalhando para gerar todo o conteúdo educacional do seu curso.<br/>
-              <span className="text-blue-600 font-medium">Isso pode levar alguns momentos...</span>
+              {lessonGenerationStatus ? (
+                <>
+                  Nossa IA está gerando as aulas-texto do primeiro módulo.<br/>
+                  <span className="text-blue-600 font-medium">
+                    Aula {lessonGenerationStatus.current} de {lessonGenerationStatus.total} em preparação...
+                  </span>
+                </>
+              ) : (
+                <>
+                  Nossa IA está trabalhando para gerar todo o conteúdo educacional do seu curso.<br/>
+                  <span className="text-blue-600 font-medium">Isso pode levar alguns momentos...</span>
+                </>
+              )}
             </p>
 
             {/* Barra de progresso dinâmica */}
@@ -776,19 +872,51 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
 
             {/* Steps indicativos */}
             <div className="grid grid-cols-3 gap-4 text-center">
-              <div className={`p-3 rounded-lg ${courseGenerationProgress >= 10 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+              <div className={`p-3 rounded-lg transition-colors ${courseGenerationProgress >= 5 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
                 <div className="text-2xl mb-1">🏗️</div>
                 <div className="text-sm font-medium">Criando Estrutura</div>
               </div>
-              <div className={`p-3 rounded-lg ${courseGenerationProgress >= 20 ? 'bg-green-100 text-green-800' : courseGenerationProgress >= 10 ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}>
+              <div className={`p-3 rounded-lg transition-colors ${
+                courseGenerationProgress >= 90 ? 'bg-green-100 text-green-800' :
+                courseGenerationProgress >= 10 ? 'bg-blue-100 text-blue-800 animate-pulse' :
+                'bg-gray-100 text-gray-600'
+              }`}>
                 <div className="text-2xl mb-1">✍️</div>
-                <div className="text-sm font-medium">Gerando Aulas-Texto</div>
+                <div className="text-sm font-medium">
+                  {lessonGenerationStatus ?
+                    `Aula ${lessonGenerationStatus.current}/${lessonGenerationStatus.total}` :
+                    'Gerando Aulas-Texto'
+                  }
+                </div>
               </div>
-              <div className={`p-3 rounded-lg ${courseGenerationProgress >= 95 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+              <div className={`p-3 rounded-lg transition-colors ${courseGenerationProgress >= 95 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
                 <div className="text-2xl mb-1">🎯</div>
                 <div className="text-sm font-medium">Finalizando Curso</div>
               </div>
             </div>
+
+            {/* Detalhamento de geração de aulas */}
+            {lessonGenerationStatus && lessonGenerationStatus.total > 0 && (
+              <div className="mt-6 p-4 bg-white/90 backdrop-blur-sm rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold text-blue-900">
+                    Progresso de Geração de Aulas
+                  </span>
+                  <span className="text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded-full">
+                    Primeiro Módulo
+                  </span>
+                </div>
+                <div className="w-full bg-blue-100 rounded-full h-2 mb-2">
+                  <div
+                    className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(lessonGenerationStatus.current / lessonGenerationStatus.total) * 100}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-600">
+                  Tempo estimado: {Math.ceil((lessonGenerationStatus.total - lessonGenerationStatus.current) * 10)} segundos
+                </p>
+              </div>
+            )}
           </div>
         </main>
       </div>
