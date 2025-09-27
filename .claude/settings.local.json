@@ -28,7 +28,15 @@
       "Bash(git show-branch:*)",
       "Bash(echo:*)",
       "Bash(timeout:*)",
-      "Bash(ping:*)"
+      "Bash(ping:*)",
+      "Bash(claude-mcp --help)",
+      "mcp__framer-mcp__getProjectXml",
+      "mcp__framer-mcp__getNodeXml",
+      "mcp__framer-mcp__manageColorStyle",
+      "mcp__framer-mcp__getSelectedNodesXml",
+      "mcp__framer-mcp__zoomIntoView",
+      "mcp__framer-mcp__updateXmlForNode",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

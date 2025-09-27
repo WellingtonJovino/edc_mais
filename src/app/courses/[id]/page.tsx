@@ -76,7 +76,15 @@ export default function CoursePage() {
     const loadCourse = async () => {
       try {
         // Tentar carregar do localStorage primeiro (dados do curso gerado)
+        console.log('🔍 Tentando carregar curso com ID:', courseId);
+        console.log('🗝️ Procurando chave no localStorage:', `course_${courseId}`);
+
+        // Debug: listar todas as chaves no localStorage
+        const allKeys = Object.keys(localStorage);
+        console.log('📋 Todas as chaves no localStorage:', allKeys);
+
         const storedCourse = localStorage.getItem(`course_${courseId}`);
+        console.log('📦 Dados encontrados no localStorage:', !!storedCourse);
 
         if (storedCourse) {
           const courseData = JSON.parse(storedCourse);
@@ -107,6 +115,11 @@ export default function CoursePage() {
           // Se houver aulas geradas, integrá-las ao curso
           if (courseData.lessons) {
             console.log('🎓 Aulas encontradas no localStorage:', Object.keys(courseData.lessons).length);
+            console.log('📋 IDs das aulas:', Object.keys(courseData.lessons));
+            console.log('📄 Primeira aula (preview):', Object.values(courseData.lessons)[0]?.substring(0, 100) + '...');
+          } else {
+            console.log('❌ NENHUMA aula encontrada no courseData.lessons');
+            console.log('🔍 Estrutura do courseData:', Object.keys(courseData));
           }
 
           setCourse(convertedCourse);
@@ -125,87 +138,9 @@ export default function CoursePage() {
           return;
         }
 
-        // Fallback: simular dados de curso para desenvolvimento
-        console.log('📚 Usando dados simulados para desenvolvimento');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        const mockCourse: Course = {
-          id: courseId,
-          title: "Cálculo A - Curso Completo",
-          description: "Curso estruturado de Cálculo A para Engenharia",
-          modules: [
-            {
-              id: "mod1",
-              title: "1. Funções e Limites",
-              description: "Introdução às funções e conceito de limite",
-              order: 1,
-              topics: [
-                {
-                  id: "topic1",
-                  title: "Introdução",
-                  description: "Conceitos fundamentais",
-                  order: 1,
-                  subtopics: [
-                    {
-                      id: "sub1",
-                      title: "O que são funções?",
-                      description: "Definição e conceitos básicos de funções",
-                      order: 1,
-                      estimatedDuration: "30 min",
-                      theory: "Conteúdo da aula-texto aqui...",
-                      videos: ["video1", "video2"],
-                      exercises: []
-                    },
-                    {
-                      id: "sub2",
-                      title: "Tipos de funções",
-                      description: "Classificação das funções matemáticas",
-                      order: 2,
-                      estimatedDuration: "45 min",
-                      theory: "Conteúdo sobre tipos de funções...",
-                      videos: ["video3"],
-                      exercises: []
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              id: "mod2",
-              title: "4. Limites Fundamentais",
-              description: "Estudo dos limites e suas propriedades",
-              order: 2,
-              topics: [
-                {
-                  id: "topic2",
-                  title: "Definição de Limite",
-                  description: "Conceito formal de limite",
-                  order: 1,
-                  subtopics: [
-                    {
-                      id: "sub3",
-                      title: "Limite de uma função",
-                      description: "Definição matemática de limite",
-                      order: 1,
-                      estimatedDuration: "40 min",
-                      theory: "Conteúdo sobre limites...",
-                      videos: ["video4"],
-                      exercises: []
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        };
-
-        setCourse(mockCourse);
-        // Selecionar primeiro subtópico por padrão
-        if (mockCourse.modules[0]?.topics[0]?.subtopics[0]) {
-          setSelectedSubtopic(mockCourse.modules[0].topics[0].subtopics[0]);
-          setExpandedModules(new Set([mockCourse.modules[0].id]));
-          setExpandedTopics(new Set([mockCourse.modules[0].topics[0].id]));
-        }
+        // Nenhum curso encontrado no localStorage
+        console.log('❌ Nenhum curso encontrado no localStorage para ID:', courseId);
+        console.log('🔍 Verifique se o curso foi salvo corretamente no localStorage');
       } catch (error) {
         console.error('Erro ao carregar curso:', error);
       } finally {
@@ -759,7 +694,7 @@ function convertSyllabusToPageStructure(courseData: any): Course {
             };
           }
           // Se já é objeto, garantir todas as propriedades
-          return {
+          const result = {
             id: subtopic.id || `sub_${topicIndex}_${subtopicIndex}`,
             title: subtopic.title || subtopic.name || subtopic.titulo || 'Subtópico sem título',
             description: subtopic.description || subtopic.descricao || '',
@@ -770,6 +705,15 @@ function convertSyllabusToPageStructure(courseData: any): Course {
             videos: subtopic.videos || [],
             exercises: subtopic.exercises || subtopic.exercicios || []
           };
+
+          // Debug: logar se o subtópico tem teoria
+          if (result.theory) {
+            console.log(`✅ Subtópico "${result.title}" tem aula-texto pronta`);
+          } else {
+            console.log(`❌ Subtópico "${result.title}" SEM aula-texto`);
+          }
+
+          return result;
         })
       }))
     }))

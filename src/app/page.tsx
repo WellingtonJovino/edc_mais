@@ -567,14 +567,45 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
       if (data.success && data.courseId) {
         setCourseGenerationProgress(10);
 
-        // Se está gerando aulas, conectar ao SSE para acompanhar progresso
-        if (data.generatingLessons && data.sessionId) {
+        // SEMPRE conectar ao SSE se há sessionId (aulas estão sendo geradas)
+        if (data.sessionId) {
+          console.log('🎓 Conectando ao SSE para acompanhar geração de aulas...');
+          console.log('📊 SessionId para SSE:', data.sessionId);
           const eventSource = new EventSource(
-            `/api/generate-first-module-lessons?sessionId=${data.sessionId}`
+            `/api/create-course?sessionId=${data.sessionId}`
           );
+
+          let sseTimeout: NodeJS.Timeout | null = null;
+          let hasReceivedData = false;
+
+          // Timeout de 30 segundos para SSE
+          sseTimeout = setTimeout(() => {
+            console.warn('SSE timeout - continuando sem aulas');
+            eventSource.close();
+
+            // IMPORTANTE: Salvar o curso mesmo quando timeout
+            if (data.course) {
+              console.log('💾 Salvando curso no localStorage por timeout SSE');
+              console.log('📊 Dados do curso que serão salvos:', data.course);
+              localStorage.setItem(`course_${data.courseId}`, JSON.stringify(data.course));
+              console.log('✅ Curso salvo no localStorage com chave:', `course_${data.courseId}`);
+            }
+
+            // Continuar sem aulas mas com progresso normal
+            setCourseGenerationProgress(100);
+            setTimeout(() => {
+              window.location.href = `/courses/${data.courseId}`;
+            }, 500);
+          }, 30000);
 
           eventSource.onmessage = (event) => {
             try {
+              hasReceivedData = true;
+              if (sseTimeout) {
+                clearTimeout(sseTimeout);
+                sseTimeout = null;
+              }
+
               const progressData = JSON.parse(event.data);
 
               if (progressData.status === 'generating') {
@@ -626,17 +657,54 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
                   }, 500);
                 }, 300);
               } else if (progressData.status === 'error' || progressData.error) {
+                console.error('Erro na geração de aulas:', progressData.error);
                 eventSource.close();
-                throw new Error(progressData.error || 'Erro ao gerar aulas');
+                if (sseTimeout) clearTimeout(sseTimeout);
+                // Continuar sem aulas mas mostrar curso mesmo assim
+                setCourseGenerationProgress(100);
+                setTimeout(() => {
+                  window.location.href = `/courses/${data.courseId}`;
+                }, 500);
               }
             } catch (error) {
               console.error('Erro ao processar progresso:', error);
+              // Em caso de erro, continuar mesmo assim
+              eventSource.close();
+              if (sseTimeout) clearTimeout(sseTimeout);
+
+              // IMPORTANTE: Salvar o curso mesmo quando há erro de processamento
+              if (data.course) {
+                console.log('💾 Salvando curso no localStorage mesmo com erro processamento');
+                console.log('📊 Dados do curso que serão salvos:', data.course);
+                localStorage.setItem(`course_${data.courseId}`, JSON.stringify(data.course));
+                console.log('✅ Curso salvo no localStorage com chave:', `course_${data.courseId}`);
+              }
+
+              setCourseGenerationProgress(100);
+              setTimeout(() => {
+                window.location.href = `/courses/${data.courseId}`;
+              }, 500);
             }
           };
 
-          eventSource.onerror = () => {
+          eventSource.onerror = (error) => {
+            console.error('Erro na conexão SSE:', error);
             eventSource.close();
-            console.error('Erro na conexão SSE');
+            if (sseTimeout) clearTimeout(sseTimeout);
+
+            // Se não recebeu nenhum dados ainda, pode ser problema de conexão
+            if (!hasReceivedData) {
+              console.warn('SSE falhou ao conectar - continuando sem aulas');
+            }
+
+            // IMPORTANTE: Salvar o curso mesmo quando SSE falha
+            if (data.course) {
+              console.log('💾 Salvando curso no localStorage mesmo com erro SSE');
+              console.log('📊 Dados do curso que serão salvos:', data.course);
+              localStorage.setItem(`course_${data.courseId}`, JSON.stringify(data.course));
+              console.log('✅ Curso salvo no localStorage com chave:', `course_${data.courseId}`);
+            }
+
             // Continuar mesmo com erro nas aulas
             setCourseGenerationProgress(100);
             setTimeout(() => {
