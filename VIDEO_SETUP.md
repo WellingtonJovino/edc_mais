@@ -22,47 +22,89 @@ Para melhor compatibilidade, adicione os seguintes formatos:
 
 ### 4. **Como o Sistema Funciona**
 
-#### **Primeira Visita**
-1. Vídeo é reproduzido automaticamente (mudo)
-2. Botão "Pular Intro" aparece após 2 segundos
-3. Nos últimos 0.5s do vídeo, detecta o "clarão branco"
-4. Transição suave para a página principal
+#### **Primeira Visita - Transição Suave em Camadas**
+1. **Vídeo reproduz automaticamente** (áudio ativo por padrão)
+2. **Botão "Pular Intro"** aparece após 2 segundos
+3. **Detecção da parte branca** (últimos 1.5s do vídeo)
+4. **Background overlay** aparece instantaneamente (cor #000618)
+5. **Página principal** surge suavemente após 200ms
+6. **Áudio do vídeo** continua tocando em background
+7. **Fade silencioso** do áudio nos últimos 0.2s
+8. **Remoção completa** do vídeo após 3 segundos
 
 #### **Visitas Subsequentes**
 - Sistema lembra que usuário já viu a intro
 - Vai direto para a página principal
-- Para resetar: limpe o localStorage do navegador
+- Para resetar: limpe o localStorage do navegador ou use `?intro=true`
 
 ### 5. **Personalização Avançada**
 
-#### **Ajustar Timing do Clarão**
-No arquivo `src/components/VideoIntro.tsx`, linha 32:
+#### **Ajustar Timing da Detecção da Parte Branca**
+No arquivo `src/components/VideoIntro.tsx`, linha 58:
 ```typescript
-// Mude o valor 0.5 para ajustar quando a transição começa
-if (duration && currentTime >= duration - 0.5) {
+// Mude o valor 1.5 para ajustar quando a transição começa
+if (duration && currentTime >= duration - 1.5 && !isTransitioning) {
+```
+
+#### **Ajustar Suavidade da Transição**
+No arquivo `src/app/page.tsx`, linha 52:
+```typescript
+// Mude o valor 200 para ajustar delay entre background e conteúdo
+setTimeout(() => {
+  setPageVisible(true);
+}, 200);
 ```
 
 #### **Desabilitar Intro Completamente**
-No arquivo `src/app/page.tsx`, linha 12:
+No arquivo `src/app/page.tsx`, linha 14:
 ```typescript
 // Mude para false para desabilitar o vídeo
 const [showIntro, setShowIntro] = useState(false);
 ```
 
 #### **Forçar Intro a Sempre Aparecer**
-Remova as linhas 16-22 em `src/app/page.tsx`:
+Remova as linhas 30-35 em `src/app/page.tsx`:
 ```typescript
 // Comente ou remova este bloco
-useEffect(() => {
-  const hasSeenIntro = localStorage.getItem('hasSeenIntro');
-  if (hasSeenIntro === 'true') {
-    setShowIntro(false);
-    setPageVisible(true);
-  }
-}, []);
+const hasSeenIntro = localStorage.getItem('hasSeenIntro');
+if (hasSeenIntro === 'true') {
+  setShowIntro(false);
+  setPageVisible(true);
+}
 ```
 
-### 6. **Troubleshooting**
+### 6. **Arquitetura da Transição Suave**
+
+#### **Camadas Z-Index**
+- **z-100:** VideoIntro (quando ativo/visível)
+- **z-50:** Página Principal (conteúdo final)
+- **z-30:** Background Overlay (camada intermediária)
+- **z-10:** VideoIntro (quando em background para áudio)
+
+#### **Sequência Temporal**
+```
+T=0ms    → Detecção da parte branca (1.5s antes do fim)
+T=0ms    → Background overlay aparece (fade 300ms)
+T=200ms  → Página principal inicia animação (800ms)
+T=1000ms → Transição visual completa
+T=2800ms → Fade do áudio inicia (últimos 0.2s)
+T=3000ms → VideoIntro removido completamente
+```
+
+#### **Animações CSS**
+- **background-fade:** 300ms ease-out (overlay)
+- **smooth-page-reveal:** 800ms cubic-bezier com blur e movimento
+- **Performance otimizada** com GPU acceleration
+
+#### **Estados React**
+```typescript
+showIntro: boolean           // Controla renderização do vídeo
+showVideoInBackground: boolean // Mantém vídeo para áudio
+showBackgroundOverlay: boolean // Camada intermediária
+pageVisible: boolean         // Página principal visível
+```
+
+### 7. **Troubleshooting**
 
 #### **Vídeo Não Carrega**
 - Verifique se o arquivo está em `public/videos/`
@@ -75,11 +117,21 @@ useEffect(() => {
 - Considere usar um CDN para hospedar o vídeo
 
 #### **Autoplay Não Funciona**
-- Vídeos com audio podem não reproduzir automaticamente
-- Sistema já está configurado como `muted` para garantir autoplay
-- Alguns navegadores bloqueiam autoplay mesmo assim
+- Vídeos com áudio podem não reproduzir automaticamente em alguns navegadores
+- Sistema está configurado para iniciar com áudio ativo (melhor experiência)
+- Se houver problemas, o vídeo pode iniciar mudo automaticamente
 
-### 7. **Estrutura de Arquivos Final**
+#### **Transição Muito Rápida/Lenta**
+- Ajuste o timing de detecção (linha 58 em VideoIntro.tsx)
+- Modifique o delay da animação (linha 52 em page.tsx)
+- Personalize as animações CSS em globals.css
+
+#### **Página Aparece Abruptamente**
+- Verifique se as classes CSS `background-fade` e `smooth-page-reveal` estão aplicadas
+- Confirme que o background overlay está sendo renderizado (z-30)
+- Teste a sequência de estados no DevTools
+
+### 8. **Estrutura de Arquivos Final**
 ```
 public/
 └── videos/
@@ -87,7 +139,7 @@ public/
     └── Video_Generation_From_Description.webm (opcional)
 ```
 
-### 8. **Exemplo de Compressão de Vídeo**
+### 9. **Exemplo de Compressão de Vídeo**
 Se o vídeo estiver muito grande, use FFmpeg:
 ```bash
 # Comprimir para web
@@ -99,10 +151,12 @@ ffmpeg -i input.mp4 -c:v libvpx-vp9 -crf 30 -b:v 0 -b:a 128k Video_Generation_Fr
 
 ## ✅ Resultado Esperado
 
-1. **Vídeo carrega e reproduz automaticamente**
-2. **No "clarão branco" do final, transição suave para a página**
-3. **Página principal aparece com animação de fade-in**
-4. **Primeira impressão cinematográfica e profissional**
+1. **Vídeo carrega e reproduz automaticamente** com áudio ativo
+2. **Background overlay** cobre a parte branca instantaneamente
+3. **Página principal** surge suavemente com animação cinematográfica
+4. **Áudio continua** durante a transição para máxima imersão
+5. **Experiência fluida** sem "saltos" visuais ou interrupções
+6. **Performance otimizada** com animações GPU-accelerated
 
 ---
 

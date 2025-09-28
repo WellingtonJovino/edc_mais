@@ -65,7 +65,6 @@ export default function VideoIntro({ onComplete }: VideoIntroProps) {
             // Limpar interval para parar monitoramento
             if (interval) {
               clearInterval(interval);
-              interval = null;
             }
 
             return; // Não executar a lógica de finalização ainda
@@ -94,7 +93,6 @@ export default function VideoIntro({ onComplete }: VideoIntroProps) {
             // Limpar interval
             if (interval) {
               clearInterval(interval);
-              interval = null;
             }
           }
         }
