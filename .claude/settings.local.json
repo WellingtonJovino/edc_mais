@@ -36,7 +36,9 @@
       "mcp__framer-mcp__getSelectedNodesXml",
       "mcp__framer-mcp__zoomIntoView",
       "mcp__framer-mcp__updateXmlForNode",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "mcp__framer-mcp__deleteNode",
+      "Bash(dir publicvideos)"
     ],
     "deny": [],
     "ask": []
