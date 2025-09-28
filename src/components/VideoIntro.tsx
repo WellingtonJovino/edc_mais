@@ -12,13 +12,14 @@ export default function VideoIntro({ onComplete }: VideoIntroProps) {
   const [isEnding, setIsEnding] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [showWhiteFlash, setShowWhiteFlash] = useState(false);
+  // Removido showWhiteFlash - não precisamos mais da transição visual
   const [videoStarted, setVideoStarted] = useState(false);
   const [showButtonLoading, setShowButtonLoading] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [showImage, setShowImage] = useState(true);
   // Removido showPagePreview - página será renderizada diretamente pelo page.tsx
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [shouldFinishAudio, setShouldFinishAudio] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -53,44 +54,48 @@ export default function VideoIntro({ onComplete }: VideoIntroProps) {
           const currentTime = video.currentTime;
           const duration = video.duration;
 
-          // Removido showPagePreview - transição será apenas fade out do vídeo
-
-          // Detecção do final do vídeo (últimos 0.8 segundos) - APENAS UMA VEZ
-          if (duration && currentTime >= duration - 0.8 && !isTransitioning) {
-            console.log('Video ending detected - starting transition');
-
-            // FLAG ATÔMICA: Prevenção de múltiplas execuções
+          // Detectar parte branca do vídeo (últimos 1.5 segundos) para mostrar página
+          if (duration && currentTime >= duration - 1.5 && !isTransitioning) {
+            console.log('White flash detected - showing main page over video');
             setIsTransitioning(true);
-            setShowWhiteFlash(true);
-            setIsEnding(true); // Setar imediatamente para evitar conflitos
 
-            // Limpar interval IMEDIATAMENTE para parar qualquer monitoramento adicional
+            // Mostrar página principal sobrepondo o vídeo (mas manter áudio)
+            onComplete();
+
+            // Limpar interval para parar monitoramento
             if (interval) {
               clearInterval(interval);
-              interval = null; // Certificar que não pode ser chamado novamente
+              interval = null;
             }
 
-            // Transição simplificada - fade out rápido e limpo
-            setTimeout(() => {
-              // Fade do áudio mais rápido
-              if (videoRef.current && videoRef.current.volume > 0) {
-                const audio = videoRef.current;
-                const fadeAudio = () => {
-                  if (audio.volume > 0.1) {
-                    audio.volume = Math.max(0, audio.volume - 0.2);
-                    setTimeout(fadeAudio, 50);
-                  } else {
-                    audio.volume = 0;
-                    console.log('Completing transition to main page');
-                    onComplete();
-                  }
-                };
-                fadeAudio();
-              } else {
-                console.log('Completing transition to main page (no audio)');
-                onComplete();
-              }
-            }, 200); // Transição mais rápida
+            return; // Não executar a lógica de finalização ainda
+          }
+
+          // Detecção do final real do vídeo (últimos 0.2 segundos) para finalizar áudio silenciosamente
+          if (duration && currentTime >= duration - 0.2 && !shouldFinishAudio) {
+            console.log('Video almost ended - fading audio silently');
+            setShouldFinishAudio(true);
+
+            // Fade do áudio silenciosamente (página já está visível)
+            if (videoRef.current && videoRef.current.volume > 0) {
+              const audio = videoRef.current;
+              const fadeAudio = () => {
+                if (audio.volume > 0.1) {
+                  audio.volume = Math.max(0, audio.volume - 0.3);
+                  setTimeout(fadeAudio, 50);
+                } else {
+                  audio.volume = 0;
+                  console.log('Audio faded out - video finished silently');
+                }
+              };
+              fadeAudio();
+            }
+
+            // Limpar interval
+            if (interval) {
+              clearInterval(interval);
+              interval = null;
+            }
           }
         }
       };
@@ -242,16 +247,7 @@ export default function VideoIntro({ onComplete }: VideoIntroProps) {
       {/* Overlay escuro para melhor legibilidade */}
       <div className="absolute inset-0 bg-black/20"></div>
 
-      {/* White flash overlay - sutil atrás da página */}
-      {showWhiteFlash && (
-        <div
-          className="absolute inset-0 bg-white opacity-30"
-          style={{
-            animation: 'subtleFlash 0.6s ease-out forwards',
-            zIndex: 15 // Atrás da página preview
-          }}
-        />
-      )}
+      {/* Removido white flash - página principal vai sobrepor diretamente */}
 
       {/* Controls Container */}
       <div className="absolute inset-0 pointer-events-none">

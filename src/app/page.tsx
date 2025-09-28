@@ -13,6 +13,8 @@ export default function LandingPage() {
   const searchParams = useSearchParams();
   const [showIntro, setShowIntro] = useState(true);
   const [pageVisible, setPageVisible] = useState(false);
+  const [showVideoInBackground, setShowVideoInBackground] = useState(false);
+  const [showBackgroundOverlay, setShowBackgroundOverlay] = useState(false);
 
   useEffect(() => {
     // Para desenvolvimento: adicione ?intro=true à URL para forçar o vídeo intro
@@ -35,14 +37,25 @@ export default function LandingPage() {
   }, [searchParams]);
 
   const handleIntroComplete = () => {
-    console.log('Video intro completed - transitioning to main page');
+    console.log('Video white flash detected - starting smooth transition');
 
     // Marcar que o usuário viu a intro
     localStorage.setItem('hasSeenIntro', 'true');
 
-    // Transição imediata e limpa - remover VideoIntro e mostrar página
-    setShowIntro(false);
-    setPageVisible(true);
+    // Passo 1: Background overlay aparece primeiro (cobre a parte branca rapidamente)
+    setShowVideoInBackground(true);
+    setShowBackgroundOverlay(true);
+
+    // Passo 2: Após 200ms, página principal começa a surgir suavemente
+    setTimeout(() => {
+      setPageVisible(true);
+    }, 200);
+
+    // Passo 3: Após 3 segundos, remover o vídeo completamente (áudio já terá terminado)
+    setTimeout(() => {
+      setShowIntro(false);
+      setShowVideoInBackground(false);
+    }, 3000);
   };
 
   const handleGetStarted = () => {
@@ -53,19 +66,25 @@ export default function LandingPage() {
     router.push('/chat');
   };
 
-  // Renderizar intro condicionalmente - garante desmontagem completa
-  if (showIntro) {
-    return (
-      <div className="fixed inset-0 z-[100]">
-        <VideoIntro onComplete={handleIntroComplete} />
-      </div>
-    );
-  }
-
   return (
-    <div className={`min-h-screen bg-[#000618] text-white overflow-hidden transition-all duration-1000 ${
-      pageVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-    }`}>
+    <div className="relative">
+      {/* Vídeo Intro - renderizado quando necessário */}
+      {showIntro && (
+        <div className={`fixed inset-0 ${showVideoInBackground ? 'z-10' : 'z-[100]'}`}>
+          <VideoIntro onComplete={handleIntroComplete} />
+        </div>
+      )}
+
+      {/* Background Overlay - camada intermediária para transição suave */}
+      {showBackgroundOverlay && (
+        <div className="fixed inset-0 z-30 bg-[#000618] background-fade" />
+      )}
+
+      {/* Página Principal - sobrepõe o vídeo quando pageVisible */}
+      {pageVisible && (
+        <div className={`fixed inset-0 z-50 min-h-screen bg-[#000618] text-white overflow-y-auto ${
+          pageVisible ? 'smooth-page-reveal' : 'opacity-0'
+        }`}>
       {/* Background gradient overlay */}
       <div className="fixed inset-0 bg-gradient-to-br from-purple-900/20 via-transparent to-blue-900/20 pointer-events-none" />
 
@@ -377,6 +396,8 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+        </div>
+      )}
     </div>
   );
 }

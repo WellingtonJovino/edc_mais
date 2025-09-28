@@ -348,3 +348,40 @@
     transform: translateZ(0) scale(1);
   }
 }
+
+/* Smooth page transition animations */
+@keyframes smoothPageReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+    filter: blur(1px);
+  }
+  40% {
+    opacity: 0.5;
+    transform: translateY(10px) scale(0.99);
+    filter: blur(0.5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+@keyframes backgroundFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Classes for smooth transitions */
+.smooth-page-reveal {
+  animation: smoothPageReveal 800ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.background-fade {
+  animation: backgroundFade 300ms ease-out forwards;
+}
