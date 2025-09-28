@@ -63,7 +63,10 @@ export default function LandingPage() {
   };
 
   const handleExploreFeatures = () => {
-    router.push('/chat');
+    const recursosSection = document.getElementById('recursos');
+    if (recursosSection) {
+      recursosSection.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   return (
@@ -269,7 +272,7 @@ export default function LandingPage() {
       </section>
 
       {/* Section: Recursos avançados de IA */}
-      <section className="relative py-20 border-t border-white/5">
+      <section id="recursos" className="relative py-20 border-t border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl sm:text-5xl font-bold mb-4">

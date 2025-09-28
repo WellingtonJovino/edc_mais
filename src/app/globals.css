@@ -385,3 +385,139 @@
 .background-fade {
   animation: backgroundFade 300ms ease-out forwards;
 }
+
+/* Transição cinematográfica imagem → vídeo */
+@keyframes buttonPulseGlow {
+  0% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(59, 130, 246, 0.8);
+    transform: scale(1.02);
+  }
+  100% {
+    box-shadow: 0 0 60px rgba(59, 130, 246, 1);
+    transform: scale(1.05);
+  }
+}
+
+@keyframes buttonDisappear {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.9) translateY(-10px);
+  }
+}
+
+@keyframes imageDarkening {
+  0% {
+    filter: brightness(1) blur(0px);
+    transform: scale(1);
+  }
+  100% {
+    filter: brightness(0.3) blur(2px);
+    transform: scale(1.05);
+  }
+}
+
+@keyframes smoothCrossfade {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 0; }
+}
+
+@keyframes overlayDarkening {
+  from { opacity: 0; }
+  to { opacity: 0.7; }
+}
+
+@keyframes textReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.9);
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+@keyframes textPulseGlow {
+  0% {
+    opacity: 0.8;
+    transform: scale(1);
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 0 4px 8px rgba(0, 0, 0, 0.5);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+    text-shadow: 0 0 40px rgba(255, 255, 255, 0.6), 0 0 60px rgba(59, 130, 246, 0.4), 0 4px 8px rgba(0, 0, 0, 0.5);
+  }
+  100% {
+    opacity: 0.8;
+    transform: scale(1);
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 0 4px 8px rgba(0, 0, 0, 0.5);
+  }
+}
+
+@keyframes textDissolve {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+  30% {
+    opacity: 0.7;
+    transform: scale(1.1);
+    filter: blur(1px);
+  }
+  60% {
+    opacity: 0.3;
+    transform: scale(1.2);
+    filter: blur(3px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+    filter: blur(5px);
+  }
+}
+
+/* Classes para aplicar as animações */
+.button-pulse-glow {
+  animation: buttonPulseGlow 1s ease-out forwards;
+}
+
+.button-disappear {
+  animation: buttonDisappear 300ms ease-out forwards;
+}
+
+.image-darkening {
+  animation: imageDarkening 800ms ease-out forwards;
+}
+
+.smooth-crossfade {
+  animation: smoothCrossfade 400ms ease-out forwards;
+}
+
+.overlay-darkening {
+  animation: overlayDarkening 800ms ease-out forwards;
+}
+
+.text-reveal {
+  animation: textReveal 600ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.text-pulse-glow {
+  animation: textPulseGlow 2s ease-in-out infinite;
+}
+
+.text-dissolve {
+  animation: textDissolve 1s ease-out forwards;
+}

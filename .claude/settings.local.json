@@ -38,7 +38,12 @@
       "mcp__framer-mcp__updateXmlForNode",
       "Bash(findstr:*)",
       "mcp__framer-mcp__deleteNode",
-      "Bash(dir publicvideos)"
+      "Bash(dir publicvideos)",
+      "Bash(start http://localhost:3000?intro=true)",
+      "Bash(dir \"C:\\Users\\wellington\\Desktop\\edc+_prototipo\\public\\videos\" /q)",
+      "Bash(start http://localhost:3000/videos/Video_Generation_From_Description.mp4)",
+      "Bash(start http://localhost:3000)",
+      "mcp__framer-mcp__searchFonts"
     ],
     "deny": [],
     "ask": []
