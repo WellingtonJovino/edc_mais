@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { VolumeX, Volume2, Play, Brain, BookOpen, Sparkles, Zap, ArrowRight, CheckCircle, MessageSquare, FileText, BarChart3, Target, Lightbulb, Code2 } from 'lucide-react';
+import { VolumeX, Volume2, Play, Brain, BookOpen, Sparkles, Zap, ArrowRight, CheckCircle, MessageSquare, FileText, BarChart3, Target, Lightbulb, Code2, Rocket } from 'lucide-react';
 
 interface VideoIntroProps {
   onComplete: () => void;
@@ -24,6 +24,23 @@ export default function VideoIntro({ onComplete }: VideoIntroProps) {
   const [textVisible, setTextVisible] = useState(false);
   const [textDissolving, setTextDissolving] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Array de mensagens motivacionais
+  const motivationalMessages = [
+    'Descubra o poder da IA na educação',
+    'Sua jornada revolucionária começa aqui',
+    'Desbloqueie seu potencial ilimitado',
+    'Entre no futuro do aprendizado personalizado',
+    'Transforme sua carreira com IA educacional',
+    'Eleve seu conhecimento a outro nível',
+    'Acelere seu aprendizado com tecnologia'
+  ];
+
+  // Seleciona uma mensagem aleatória
+  const [selectedMessage] = useState(() => {
+    const randomIndex = Math.floor(Math.random() * motivationalMessages.length);
+    return motivationalMessages[randomIndex];
+  });
 
   useEffect(() => {
     // Fallback mais rápido: se o vídeo não carregar em 3 segundos, mostrar como carregado
@@ -350,60 +367,63 @@ export default function VideoIntro({ onComplete }: VideoIntroProps) {
           </div>
         )}
 
-        {/* Start Button - transição invisível suave */}
+        {/* Start Button - design minimalista e elegante */}
         {showImage && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-auto" style={{ zIndex: 10 }}>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-auto" style={{ zIndex: 10 }}>
+            {/* Mensagem motivacional simplificada */}
+            <div className={`mb-12 text-center transition-all duration-700 ${
+              buttonVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
+            }`}>
+              <h2 className="text-2xl md:text-3xl font-medium text-white/95 mb-3">
+                {selectedMessage}
+              </h2>
+              <p className="text-base text-white/60 font-light">
+                Clique para começar sua jornada
+              </p>
+            </div>
+
+            {/* Botão minimalista com foco no pulsante */}
             <button
               onClick={handleStartVideo}
               disabled={!buttonVisible}
-              className={`group relative overflow-hidden ${
+              className={`group relative ${
                 buttonVisible
-                  ? 'transform hover:scale-105 transition-all duration-300 ease-out opacity-100'
-                  : 'button-disappear'
+                  ? 'transform hover:scale-105 transition-all duration-300 opacity-100'
+                  : 'opacity-0 scale-95'
               }`}
-              style={{
-                willChange: 'transform, opacity',
-                transform: 'translateZ(0)'
-              }}
             >
-              {/* Botão redesenhado com transição suave */}
               <div className="relative">
-                {/* Glow effect pulsante */}
-                <div className="absolute -inset-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl blur-xl opacity-30 group-hover:opacity-50 animate-pulse transition-opacity duration-500"></div>
+                {/* Glow suave e elegante */}
+                <div className="absolute -inset-3 bg-gradient-to-r from-blue-500/30 to-purple-500/30 rounded-full blur-xl opacity-100 animate-pulse-slow"></div>
 
-                {/* Botão principal */}
-                <div className="relative px-10 py-5 bg-gradient-to-r from-blue-600/95 to-purple-600/95 backdrop-blur-xl border-2 border-white/40 rounded-2xl shadow-2xl shadow-blue-500/30 group-hover:shadow-purple-500/40 transition-all duration-500">
+                {/* Botão principal minimalista */}
+                <div className="relative px-10 py-5 bg-white/10 backdrop-blur-md border border-white/30 rounded-full transition-all duration-500 group-hover:bg-white/15 group-hover:border-white/50">
 
-                  {/* Animated gradient overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -skew-x-12 translate-x-[-300%] group-hover:translate-x-[300%] transition-transform duration-1000 ease-out rounded-2xl" />
+                  {/* Shimmer sutil no hover */}
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/5 to-transparent -skew-x-12 translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000" />
 
-                  {/* Breathing animation border */}
-                  <div className="absolute inset-0 rounded-2xl border-2 border-white/20 group-hover:border-white/40 transition-colors duration-500" />
-
-                  {/* Conteúdo do botão */}
-                  <div className="relative flex items-center space-x-4">
+                  {/* Conteúdo centralizado */}
+                  <div className="relative flex items-center space-x-3">
+                    {/* Ícone pulsante */}
                     <div className="relative">
-                      {/* Icon container com micro-animação */}
-                      <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center group-hover:bg-white/30 group-hover:rotate-12 transition-all duration-500">
-                        <Play className="w-6 h-6 text-white ml-1 group-hover:scale-110 transition-transform duration-300" fill="currentColor" />
+                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center animate-pulse-glow">
+                        <Play className="w-5 h-5 text-white ml-0.5" fill="currentColor" />
                       </div>
-
-                      {/* Pulse ring */}
-                      <div className="absolute inset-0 rounded-full border-2 border-white/30 animate-ping group-hover:animate-none"></div>
+                      {/* Ring pulsante único */}
+                      <div className="absolute inset-0 rounded-full border border-white/30 animate-ping"></div>
                     </div>
 
-                    <div className="text-left">
-                      <div className="text-xl font-bold text-white group-hover:text-blue-100 transition-colors duration-300">
+                    {/* Texto simples e direto */}
+                    <div>
+                      <div className="text-lg font-semibold text-white">
                         Entrar no EDC+
-                      </div>
-                      <div className="text-sm text-white/80 group-hover:text-white/90 transition-colors duration-300">
-                        Mergulhe no futuro da educação
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
             </button>
+
           </div>
         )}
 
@@ -474,6 +494,13 @@ export default function VideoIntro({ onComplete }: VideoIntroProps) {
           text-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
         }
 
+        .text-shadow-glow {
+          text-shadow:
+            0 0 20px rgba(59, 130, 246, 0.8),
+            0 0 40px rgba(147, 51, 234, 0.6),
+            0 4px 8px rgba(0, 0, 0, 0.5);
+        }
+
         @keyframes pageReveal {
           0% {
             opacity: 0;
@@ -507,6 +534,106 @@ export default function VideoIntro({ onComplete }: VideoIntroProps) {
           100% {
             opacity: 0.1;
           }
+        }
+
+        @keyframes pulseSlow {
+          0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 0.8;
+            transform: scale(1.05);
+          }
+        }
+
+        .animate-pulse-slow {
+          animation: pulseSlow 3s ease-in-out infinite;
+        }
+
+        @keyframes pulseGlow {
+          0%, 100% {
+            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4),
+                        0 0 20px rgba(59, 130, 246, 0.3);
+          }
+          50% {
+            box-shadow: 0 0 0 10px rgba(59, 130, 246, 0),
+                        0 0 30px rgba(147, 51, 234, 0.4);
+          }
+        }
+
+        .animate-pulse-glow {
+          animation: pulseGlow 2s ease-in-out infinite;
+        }
+
+        @keyframes textPulse {
+          0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 0.95;
+            transform: scale(1.02);
+          }
+        }
+
+        .animate-text-pulse {
+          animation: textPulse 3s ease-in-out infinite;
+        }
+
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .animate-fade-in {
+          animation: fadeIn 1s ease-out forwards;
+        }
+
+        @keyframes sparkle {
+          0%, 100% {
+            opacity: 0;
+            transform: scale(0);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        .animate-sparkle {
+          animation: sparkle 2s ease-in-out infinite;
+        }
+
+        @keyframes bounceX {
+          0%, 100% {
+            transform: translateX(0);
+          }
+          50% {
+            transform: translateX(3px);
+          }
+        }
+
+        .animate-bounce-x {
+          animation: bounceX 1s ease-in-out infinite;
+        }
+
+        .animation-delay-150 {
+          animation-delay: 150ms;
+        }
+
+        .animation-delay-300 {
+          animation-delay: 300ms;
+        }
+
+        .animation-delay-500 {
+          animation-delay: 500ms;
         }
       `}</style>
     </div>

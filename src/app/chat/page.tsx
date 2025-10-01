@@ -8,8 +8,10 @@ import ChatInterface from '@/components/ChatInterface';
 import FileUpload from '@/components/FileUpload';
 import UserQuestionnaire from '@/components/UserQuestionnaire';
 import TinySyllabusEditor from '@/components/TinySyllabusEditor';
+import ThemeToggle from '@/components/ThemeToggle';
 import { ChatMessage, UploadedFile } from '@/types';
 import { getProfileLabels } from '@/lib/profileLabels';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface UserProfile {
   level: 'beginner' | 'intermediate' | 'advanced';
@@ -29,14 +31,56 @@ interface SyllabusData {
   level: string;
 }
 
+// Função helper para salvar curso no localStorage com validação
+const saveCourseToLocalStorage = (data: any) => {
+  try {
+    const courseKey = `course_${data.course?.id || data.courseId}`;
+
+    if (!data.course?.id && !data.courseId) {
+      console.error('❌ Nenhum courseId válido encontrado:', { data });
+      return false;
+    }
+
+    if (!data.course) {
+      console.error('❌ Dados do curso não encontrados:', { data });
+      return false;
+    }
+
+    console.log('💾 Salvando curso no localStorage com chave:', courseKey);
+    console.log('📊 Dados do curso que serão salvos:', data.course);
+
+    localStorage.setItem(courseKey, JSON.stringify(data.course));
+
+    console.log('✅ Curso salvo no localStorage com sucesso');
+    return true;
+  } catch (error) {
+    console.error('❌ Erro ao salvar curso no localStorage:', error);
+    return false;
+  }
+};
+
 export default function ChatPage() {
   const router = useRouter();
+  const { isDarkMode } = useTheme();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string>('');
+  const [pageLoaded, setPageLoaded] = useState(false);
+
+  // Adicionar animação de entrada na página
+  useEffect(() => {
+    // Remover classe de transição após a navegação
+    document.body.classList.remove('page-transition-active');
+
+    // Adicionar classe de animação de entrada
+    const mainElement = document.querySelector('main');
+    if (mainElement) {
+      mainElement.classList.add('page-enter');
+    }
+  }, []);
 
   // Novos estados para o fluxo do syllabus
   const [currentSyllabus, setCurrentSyllabus] = useState<SyllabusData | null>(null);
@@ -135,6 +179,12 @@ export default function ChatPage() {
       }
     };
   }, [eventSource]);
+
+  // Animação de entrada da página
+  useEffect(() => {
+    // Carregamento imediato sem delays
+    setPageLoaded(true);
+  }, []);
 
   const handleSendMessage = async (message: string, files?: UploadedFile[]) => {
     // Detectar comando para gerar curso principal
@@ -567,36 +617,72 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
       if (data.success && data.courseId) {
         setCourseGenerationProgress(10);
 
-        // SEMPRE conectar ao SSE se há sessionId (aulas estão sendo geradas)
-        if (data.sessionId) {
-          console.log('🎓 Conectando ao SSE para acompanhar geração de aulas...');
-          console.log('📊 SessionId para SSE:', data.sessionId);
-          const eventSource = new EventSource(
-            `/api/create-course?sessionId=${data.sessionId}`
-          );
+        // Se as aulas já estão TODAS prontas, ir direto para 100%
+        if (data.lessonsReady && data.lessonStats && data.lessonStats.missing === 0) {
+          console.log('✅ Todas as aulas já estão prontas! Redirecionando...');
+          console.log('📊 Estatísticas:', data.lessonStats);
 
-          let sseTimeout: NodeJS.Timeout | null = null;
-          let hasReceivedData = false;
+          // Animação rápida até 100%
+          let progress = 10;
+          const progressInterval = setInterval(() => {
+            progress += 15;
+            setCourseGenerationProgress(Math.min(progress, 100));
 
-          // Timeout de 30 segundos para SSE
+            if (progress >= 100) {
+              clearInterval(progressInterval);
+
+              // Salvar no localStorage
+              if (data.course) {
+                saveCourseToLocalStorage(data);
+              }
+
+              // Redirecionar
+              setTimeout(() => {
+                window.location.href = `/courses/${data.course.id}`;
+              }, 500);
+            }
+          }, 100);
+
+        } else {
+          // Aulas não estão prontas - conectar ao SSE para acompanhar geração
+          console.log('⚠️ Aulas ainda não estão prontas, conectando ao SSE...');
+
+          if (data.lessonStats) {
+            console.log('📊 Status das aulas:', {
+              prontas: data.lessonStats.ready || 0,
+              necessárias: data.lessonStats.needed || 0,
+              faltando: data.lessonStats.missing || 0
+            });
+          }
+
+          if (data.sessionId) {
+            console.log('🎓 Conectando ao SSE para acompanhar geração de aulas em tempo real...');
+            console.log('📊 SessionId para SSE:', data.sessionId);
+            console.log('⏳ Aguardando conclusão da geração antes de redirecionar...');
+            const eventSource = new EventSource(
+              `/api/create-course?sessionId=${data.sessionId}`
+            );
+
+            let sseTimeout: NodeJS.Timeout | null = null;
+            let hasReceivedData = false;
+
+          // Timeout de 60 segundos para SSE (mais tempo para gerar aulas)
           sseTimeout = setTimeout(() => {
-            console.warn('SSE timeout - continuando sem aulas');
+            console.warn('SSE timeout - verificando status da geração...');
             eventSource.close();
 
             // IMPORTANTE: Salvar o curso mesmo quando timeout
             if (data.course) {
               console.log('💾 Salvando curso no localStorage por timeout SSE');
-              console.log('📊 Dados do curso que serão salvos:', data.course);
-              localStorage.setItem(`course_${data.courseId}`, JSON.stringify(data.course));
-              console.log('✅ Curso salvo no localStorage com chave:', `course_${data.courseId}`);
+              saveCourseToLocalStorage(data);
             }
 
             // Continuar sem aulas mas com progresso normal
             setCourseGenerationProgress(100);
             setTimeout(() => {
-              window.location.href = `/courses/${data.courseId}`;
+              window.location.href = `/courses/${data.course.id}`;
             }, 500);
-          }, 30000);
+          }, 60000); // 60 segundos de timeout
 
           eventSource.onmessage = (event) => {
             try {
@@ -649,22 +735,42 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
                   localStorage.setItem(`course_${data.courseId}`, JSON.stringify(courseWithLessons));
                 }
 
-                // Finalizar e redirecionar
+                // Finalizar e redirecionar SOMENTE quando tudo estiver pronto
+                console.log('✅ Todas as aulas foram geradas com sucesso!');
                 setTimeout(() => {
                   setCourseGenerationProgress(100);
                   setTimeout(() => {
-                    window.location.href = `/courses/${data.courseId}`;
+                    window.location.href = `/courses/${data.course.id}`;
                   }, 500);
                 }, 300);
               } else if (progressData.status === 'error' || progressData.error) {
                 console.error('Erro na geração de aulas:', progressData.error);
                 eventSource.close();
                 if (sseTimeout) clearTimeout(sseTimeout);
-                // Continuar sem aulas mas mostrar curso mesmo assim
-                setCourseGenerationProgress(100);
+
+                // Mostrar erro mas NÃO redirecionar automaticamente
+                setLessonGenerationStatus({
+                  current: 0,
+                  total: 0,
+                  currentLesson: 'Erro ao gerar aulas',
+                  phase: 'error',
+                });
+
+                // Dar opção ao usuário de continuar ou tentar novamente
+                setCourseGenerationProgress(95);
+
+                // Salvar curso mesmo com erro
+                if (data.course) {
+                  saveCourseToLocalStorage(data);
+                }
+
+                // Esperar mais tempo e então redirecionar
                 setTimeout(() => {
-                  window.location.href = `/courses/${data.courseId}`;
-                }, 500);
+                  setCourseGenerationProgress(100);
+                  setTimeout(() => {
+                    window.location.href = `/courses/${data.course.id}`;
+                  }, 2000);
+                }, 3000);
               }
             } catch (error) {
               console.error('Erro ao processar progresso:', error);
@@ -675,14 +781,12 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
               // IMPORTANTE: Salvar o curso mesmo quando há erro de processamento
               if (data.course) {
                 console.log('💾 Salvando curso no localStorage mesmo com erro processamento');
-                console.log('📊 Dados do curso que serão salvos:', data.course);
-                localStorage.setItem(`course_${data.courseId}`, JSON.stringify(data.course));
-                console.log('✅ Curso salvo no localStorage com chave:', `course_${data.courseId}`);
+                saveCourseToLocalStorage(data);
               }
 
               setCourseGenerationProgress(100);
               setTimeout(() => {
-                window.location.href = `/courses/${data.courseId}`;
+                window.location.href = `/courses/${data.course.id}`;
               }, 500);
             }
           };
@@ -700,45 +804,23 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
             // IMPORTANTE: Salvar o curso mesmo quando SSE falha
             if (data.course) {
               console.log('💾 Salvando curso no localStorage mesmo com erro SSE');
-              console.log('📊 Dados do curso que serão salvos:', data.course);
-              localStorage.setItem(`course_${data.courseId}`, JSON.stringify(data.course));
-              console.log('✅ Curso salvo no localStorage com chave:', `course_${data.courseId}`);
+              saveCourseToLocalStorage(data);
             }
 
             // Continuar mesmo com erro nas aulas
             setCourseGenerationProgress(100);
             setTimeout(() => {
-              window.location.href = `/courses/${data.courseId}`;
+              window.location.href = `/courses/${data.course.id}`;
             }, 500);
           };
-        } else {
-          // Sem geração de aulas, progresso simples
-          let progress = 10;
-          const targetProgress = 100;
-          const totalDuration = 3000;
-          const startTime = Date.now();
-
-          const progressInterval = setInterval(() => {
-            const elapsed = Date.now() - startTime;
-            const percentComplete = Math.min(elapsed / totalDuration, 1);
-            const easeOutQuart = 1 - Math.pow(1 - percentComplete, 4);
-            progress = 10 + (easeOutQuart * 90);
-
-            setCourseGenerationProgress(progress);
-
-            if (progress >= 99.5) {
-              clearInterval(progressInterval);
-              setCourseGenerationProgress(100);
-
-              if (data.course) {
-                localStorage.setItem(`course_${data.courseId}`, JSON.stringify(data.course));
-              }
-
-              setTimeout(() => {
-                window.location.href = `/courses/${data.courseId}`;
-              }, 200);
-            }
-          }, 50);
+          } else {
+            // Sem sessionId - erro
+            console.error('❌ Nenhum sessionId para acompanhar geração!');
+            setCourseGenerationProgress(100);
+            setTimeout(() => {
+              window.location.href = `/courses/${data.course.id}`;
+            }, 500);
+          }
         }
 
       } else {
@@ -993,137 +1075,93 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
 
   return (
     <div
-      className="h-screen flex flex-col overflow-hidden"
+      className={`h-screen flex flex-col overflow-hidden ${
+        isDarkMode ? 'bg-gray-900' : ''
+      }`}
       style={{
-        background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%)',
-        transform: `scale(${1 + (transitionProgress * 0.08) / 100}) translateZ(0)`,
-        filter: `brightness(${100 + (transitionProgress * 30) / 100}%) blur(${(transitionProgress * 0.5) / 100}px)`,
-        opacity: Math.max(0, Math.cos((transitionProgress * Math.PI) / 200)),
-        transition: 'none',
-        willChange: 'transform, filter, opacity',
-        backfaceVisibility: 'hidden',
-        perspective: '1000px'
+        background: isDarkMode
+          ? 'linear-gradient(135deg, #1f2937 0%, #111827 100%)'
+          : 'linear-gradient(135deg, #87C9FF 0%, #93C5FD 50%, #A5B4FC 100%)'
       }}
     >
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 shadow-md flex-shrink-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Header Elegante */}
+      <header className={`backdrop-blur-md border-b ${
+        isDarkMode
+          ? 'border-gray-700/50 bg-gray-900/30'
+          : 'border-white/50 bg-white/20'
+      }`}>
+        <div className="max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg">
                 <Brain className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">EDC+ Plataforma Educacional</h1>
-                <p className="text-sm text-gray-600">Ensino superior personalizado com IA científica</p>
-              </div>
+              <h1 className={`text-xl font-bold ${
+                isDarkMode ? 'text-white' : 'text-gray-900'
+              }`}>EDC+ Plataforma Educacional</h1>
             </div>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => {
+                  // Adicionar animação de fade out
+                  const mainElement = document.querySelector('main');
+                  if (mainElement) {
+                    mainElement.style.opacity = '0';
+                    mainElement.style.transition = 'opacity 300ms ease-out';
+                  }
 
-            <div className="flex items-center space-x-6">
+                  // Navegar após a animação
+                  setTimeout(() => {
+                    router.push('/');
+                  }, 300);
+                }}
+                className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                  isDarkMode
+                    ? 'text-gray-300 hover:text-white hover:bg-gray-700/50'
+                    : 'text-gray-700 hover:text-gray-900 hover:bg-white/50'
+                }`}
+              >
+                <Brain className="w-4 h-4" />
+                <span>Início</span>
+              </button>
               <Link
                 href="/courses"
-                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                  isDarkMode
+                    ? 'text-gray-300 hover:text-white hover:bg-gray-700/50'
+                    : 'text-gray-700 hover:text-gray-900 hover:bg-white/50'
+                }`}
               >
                 <BookOpen className="w-4 h-4" />
-                <span>Meus Cursos</span>
+                <span>Cursos</span>
               </Link>
-
+              <ThemeToggle />
             </div>
           </div>
         </div>
       </header>
 
-      {/* Floating Elements Overlay - Video-like animation */}
-      {showFloatingElements && (
-        <div className="fixed inset-0 z-40 pointer-events-none overflow-hidden">
-          {/* Chat messages floating up */}
-          <div className="absolute left-1/4 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <div className="w-64 h-16 bg-white rounded-lg shadow-lg border border-gray-200 animate-float-merge opacity-80">
-              <div className="p-3">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full float-left mr-3"></div>
-                <div className="space-y-1">
-                  <div className="h-2 bg-gray-200 rounded w-3/4"></div>
-                  <div className="h-2 bg-gray-200 rounded w-1/2"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Syllabus structure floating */}
-          <div className="absolute right-1/4 top-1/3 transform translate-x-1/2 -translate-y-1/2">
-            <div className="w-56 h-32 bg-white rounded-lg shadow-lg border border-gray-200 animate-float-merge-delayed opacity-80">
-              <div className="p-3">
-                <div className="h-3 bg-gradient-to-r from-blue-400 to-purple-500 rounded mb-2"></div>
-                <div className="space-y-2">
-                  <div className="h-2 bg-gray-200 rounded w-full"></div>
-                  <div className="h-2 bg-gray-200 rounded w-5/6"></div>
-                  <div className="h-2 bg-gray-200 rounded w-4/5"></div>
-                  <div className="h-2 bg-gray-200 rounded w-3/4"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* File elements floating */}
-          <div className="absolute left-1/3 bottom-1/3 transform -translate-x-1/2 translate-y-1/2">
-            <div className="w-16 h-16 bg-blue-100 rounded-lg shadow-lg animate-float-spiral opacity-70 flex items-center justify-center">
-              <FileText className="w-8 h-8 text-blue-600" />
-            </div>
-          </div>
-
-          {/* Brain icon floating */}
-          <div className="absolute right-1/3 bottom-1/4 transform translate-x-1/2 translate-y-1/2">
-            <div className="w-20 h-20 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full shadow-lg animate-float-pulse opacity-80 flex items-center justify-center">
-              <Brain className="w-10 h-10 text-white" />
-            </div>
-          </div>
-
-          {/* Sparkling particles */}
-          <div className="absolute top-1/4 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <div className="w-3 h-3 bg-yellow-400 rounded-full animate-ping-slow opacity-60"></div>
-          </div>
-          <div className="absolute top-3/4 right-1/4">
-            <div className="w-2 h-2 bg-blue-400 rounded-full animate-ping opacity-50 animation-delay-300"></div>
-          </div>
-          <div className="absolute bottom-1/2 left-1/4">
-            <div className="w-4 h-4 bg-purple-400 rounded-full animate-pulse opacity-40 animation-delay-500"></div>
-          </div>
-
-          {/* Convergence effect - all elements move toward center */}
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <div className="w-32 h-32 border-4 border-dashed border-blue-400 rounded-full animate-spin-slow opacity-30"></div>
-          </div>
-        </div>
-      )}
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full">
-          <div
-            className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full"
-            style={{
-              transform: `scale(${1 - (transitionProgress * 0.2) / 100}) translateY(${-(transitionProgress * 100) / 100}px)`,
-              opacity: Math.max(0, 1 - (transitionProgress * 1.2) / 100),
-              filter: `blur(${(transitionProgress * 8) / 100}px)`,
-              transition: 'none',
-              willChange: 'transform, opacity, filter'
-            }}
-          >
+        <div className="max-w-7xl mx-auto px-6 py-6 h-full">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
             {/* Chat Panel */}
-            <div className="bg-white rounded-lg border border-gray-200 flex flex-col h-full overflow-hidden">
-              <div className="p-4 border-b border-gray-200 flex-shrink-0">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-lg font-semibold text-gray-900">Assistente Educacional</h2>
-                  <button
-                    onClick={() => setShowFileUpload(true)}
-                    className="flex items-center space-x-2 px-3 py-2 text-sm bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-sm"
-                  >
-                    <Upload className="w-4 h-4" />
-                    <span>Enviar PDFs</span>
-                  </button>
-                </div>
-                <p className="text-sm text-gray-600">
-                  Conte o que deseja estudar e receba um curso científico personalizado
+            <div className={`rounded-xl flex flex-col h-full overflow-hidden backdrop-blur-md shadow-xl ${
+              isDarkMode
+                ? 'bg-gray-800/80 border border-gray-600/30'
+                : 'bg-white/90 border border-white/50'
+            }`}>
+              <div className={`p-5 border-b ${
+                isDarkMode ? 'border-gray-600/30' : 'border-gray-200/50'
+              }`}>
+                <h2 className={`text-xl font-semibold mb-2 ${
+                  isDarkMode ? 'text-white' : 'text-gray-900'
+                }`}>Assistente Educacional</h2>
+                <p className={`text-sm ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                }`}>
+                  O Guia transforma cada objetivo em um caminho de aprendizado.
                 </p>
               </div>
               <div className="flex-1 min-h-0 overflow-hidden">
@@ -1140,12 +1178,22 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
             </div>
 
             {/* Syllabus/Learning Plan Panel */}
-            <div className={`flex flex-col h-full overflow-hidden ${currentSyllabus ? 'bg-white rounded-lg border border-gray-200' : ''}`}>
+            <div className={`flex flex-col h-full overflow-hidden ${
+              currentSyllabus
+                ? isDarkMode
+                  ? 'rounded-xl backdrop-blur-md shadow-xl border bg-gray-800/80 border-gray-600/30'
+                  : 'rounded-xl backdrop-blur-md shadow-xl border bg-white/90 border-white/50'
+                : ''
+            }`}>
               {currentSyllabus ? (
                 <div className="flex-1 min-h-0 overflow-hidden relative">
                   <button
                     onClick={handleSyllabusCancel}
-                    className="absolute top-2 right-2 z-10 text-gray-500 hover:text-gray-700 transition-colors bg-white rounded-full p-1 shadow-sm"
+                    className={`absolute top-4 right-4 z-10 transition-colors rounded-full p-2 ${
+                      isDarkMode
+                        ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1156,15 +1204,22 @@ Quando estiver satisfeito, é só me dizer **"gerar curso"** que eu crio todas a
                   />
                 </div>
               ) : (
-                <div className="h-full flex items-center justify-center text-center">
-                  <div className="max-w-md">
-                    <Brain className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-800 mb-2">
+                <div className="h-full flex items-center justify-center text-center p-8">
+                  <div className="max-w-sm">
+                    <div className="w-16 h-16 bg-gray-400 rounded-lg mx-auto mb-4 flex items-center justify-center">
+                      <Brain className="w-8 h-8 text-white" />
+                    </div>
+                    <h3 className={`text-lg font-medium mb-3 ${
+                      isDarkMode ? 'text-white' : 'text-gray-900'
+                    }`}>
                       Pronto para começar?
                     </h3>
-                    <p className="text-gray-700">
-                      Descreva sua área de estudo e receba um curso estruturado com aulas
-                      científicas, vídeos especializados e exercícios práticos.
+                    <p className={`text-sm ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                    }`}>
+                      Descreva o que quer aprender e receba um curso
+                      estruturado com aulas texto, vídeos especializados e
+                      exercícios práticos.
                     </p>
                   </div>
                 </div>

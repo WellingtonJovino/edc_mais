@@ -1,20 +1,27 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Brain, BookOpen, Star, Users, Sparkles, Zap, ArrowRight, Play, CheckCircle, MessageSquare, FileText, BarChart3, Target, Lightbulb, Code2 } from 'lucide-react';
+import { Brain, BookOpen, Star, Users, Sparkles, Zap, ArrowRight, Play, CheckCircle, MessageSquare, FileText, BarChart3, Target, Lightbulb, Code2, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import VideoIntro from '@/components/VideoIntro';
+import ThemeToggle from '@/components/ThemeToggle';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export default function LandingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [showIntro, setShowIntro] = useState(true);
-  const [pageVisible, setPageVisible] = useState(false);
+  const { isDarkMode } = useTheme();
+
+  // Inicializar estados baseado se já viu a intro
+  const hasSeenIntro = typeof window !== 'undefined' ? localStorage.getItem('hasSeenIntro') === 'true' : false;
+  const [showIntro, setShowIntro] = useState(!hasSeenIntro);
+  const [pageVisible, setPageVisible] = useState(hasSeenIntro);
   const [showVideoInBackground, setShowVideoInBackground] = useState(false);
   const [showBackgroundOverlay, setShowBackgroundOverlay] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   useEffect(() => {
     // Para desenvolvimento: adicione ?intro=true à URL para forçar o vídeo intro
@@ -30,9 +37,20 @@ export default function LandingPage() {
       // Verificar se o usuário já viu a intro
       const hasSeenIntro = localStorage.getItem('hasSeenIntro');
       if (hasSeenIntro === 'true') {
+        // Marcar intro como vista e mostrar página imediatamente
+        localStorage.setItem('hasSeenIntro', 'true');
         setShowIntro(false);
         setPageVisible(true);
+        setShowVideoInBackground(false);
+        setShowBackgroundOverlay(false);
       }
+    }
+
+    // Garantir transição suave quando voltar de outras páginas
+    const mainElement = document.querySelector('main');
+    if (mainElement) {
+      mainElement.style.opacity = '1';
+      mainElement.style.transition = 'opacity 300ms ease-in';
     }
   }, [searchParams]);
 
@@ -59,7 +77,24 @@ export default function LandingPage() {
   };
 
   const handleGetStarted = () => {
-    router.push('/chat');
+    // Ativar loading
+    setIsNavigating(true);
+
+    // Adicionar animação de fade out
+    const pageElement = document.querySelector('main');
+    if (pageElement) {
+      pageElement.style.transform = 'scale(0.95)';
+      pageElement.style.opacity = '0';
+      pageElement.style.transition = 'all 0.5s ease-out';
+    }
+
+    // Adicionar classe de transição ao body
+    document.body.classList.add('page-transition-active');
+
+    // Navegar após a animação
+    setTimeout(() => {
+      router.push('/chat');
+    }, 300);
   };
 
   const handleExploreFeatures = () => {
@@ -85,21 +120,51 @@ export default function LandingPage() {
 
       {/* Página Principal - sobrepõe o vídeo quando pageVisible */}
       {pageVisible && (
-        <div className={`fixed inset-0 z-50 min-h-screen bg-[#000618] text-white overflow-y-auto ${
+        <div className={`fixed inset-0 z-50 min-h-screen overflow-y-auto ${
           pageVisible ? 'smooth-page-reveal' : 'opacity-0'
+        } ${
+          isDarkMode
+            ? 'bg-gradient-to-b from-[#000618] via-[#0a0f2e] via-[#0d1136] to-[#0f1540]'
+            : 'bg-gradient-to-b from-blue-50 via-indigo-50 via-purple-50/80 to-cyan-50/70'
         }`}>
-      {/* Background gradient overlay */}
-      <div className="fixed inset-0 bg-gradient-to-br from-purple-900/20 via-transparent to-blue-900/20 pointer-events-none" />
+
+      {/* Background gradient overlay adicional para mais profundidade */}
+      <div className={`fixed inset-0 pointer-events-none ${
+        isDarkMode
+          ? 'bg-gradient-to-br from-purple-900/15 via-transparent to-blue-900/15'
+          : 'bg-gradient-to-br from-blue-100/20 via-transparent to-indigo-100/20'
+      }`} />
+
+      {/* Container de conteúdo */}
+      <div className={`relative ${
+        isDarkMode ? 'text-white' : 'text-gray-900'
+      }`}>
 
       {/* Animated gradient orbs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-600 rounded-full mix-blend-screen filter blur-3xl opacity-20 animate-blob" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-600 rounded-full mix-blend-screen filter blur-3xl opacity-20 animate-blob animation-delay-2000" />
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-indigo-600 rounded-full mix-blend-screen filter blur-3xl opacity-10 animate-blob animation-delay-4000" />
+        <div className={`absolute -top-40 -right-40 w-80 h-80 rounded-full filter blur-3xl animate-blob ${
+          isDarkMode
+            ? 'bg-purple-600 mix-blend-screen opacity-20'
+            : 'bg-blue-300 mix-blend-normal opacity-30'
+        }`} />
+        <div className={`absolute -bottom-40 -left-40 w-80 h-80 rounded-full filter blur-3xl animate-blob animation-delay-2000 ${
+          isDarkMode
+            ? 'bg-blue-600 mix-blend-screen opacity-20'
+            : 'bg-indigo-300 mix-blend-normal opacity-25'
+        }`} />
+        <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full filter blur-3xl animate-blob animation-delay-4000 ${
+          isDarkMode
+            ? 'bg-indigo-600 mix-blend-screen opacity-10'
+            : 'bg-cyan-300 mix-blend-normal opacity-20'
+        }`} />
       </div>
 
       {/* Header/Navigation */}
-      <header className="relative z-50 border-b border-white/5 backdrop-blur-sm">
+      <header className={`relative z-50 backdrop-blur-sm ${
+        isDarkMode
+          ? 'border-b border-white/5'
+          : 'border-b border-gray-200/50'
+      }`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-3">
@@ -107,15 +172,24 @@ export default function LandingPage() {
                 <Brain className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold">EDC+ Plataforma Educacional</h1>
-                <p className="text-xs text-gray-400 hidden sm:block">Ensino superior personalizado com IA científica</p>
+                <h1 className={`text-xl font-bold ${
+                  isDarkMode ? 'text-white' : 'text-gray-900'
+                }`}>EDC+ Plataforma Educacional</h1>
+                <p className={`text-xs hidden sm:block ${
+                  isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                }`}>Aqui, sua jornada de conhecimento começa com clareza.</p>
               </div>
             </div>
 
-            <div className="flex items-center space-x-6">
+            <div className="flex items-center space-x-4">
+              <ThemeToggle />
               <Link
                 href="/courses"
-                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-300 hover:text-white glass rounded-lg transition-all hover:shadow-lg hover:shadow-blue-500/25"
+                className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all hover:shadow-lg hover:shadow-blue-500/25 ${
+                  isDarkMode
+                    ? 'text-gray-300 hover:text-white glass border border-white/10'
+                    : 'text-gray-700 hover:text-gray-900 bg-white/70 border border-gray-200/50 backdrop-blur-sm'
+                }`}
               >
                 <BookOpen className="w-4 h-4" />
                 <span>Meus Cursos</span>
@@ -130,19 +204,27 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             {/* Try Free Badge */}
-            <div className="inline-flex items-center space-x-2 px-4 py-2 glass rounded-full mb-8">
-              <Sparkles className="w-4 h-4 text-blue-400" />
-              <span className="text-sm text-gray-300">Try Free</span>
+            <div className={`inline-flex items-center space-x-2 px-4 py-2 rounded-full mb-8 backdrop-blur-sm ${
+              isDarkMode
+                ? 'glass border border-white/10'
+                : 'bg-white/70 border border-gray-200/50'
+            }`}>
+              <Sparkles className="w-4 h-4 text-blue-500" />
+              <span className={`text-sm ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>Guia</span>
             </div>
 
-            {/* Main Heading */}
+            {/* Main Heading - Tamanho otimizado */}
             <div className="mb-8">
-              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold mb-4 leading-tight">
+              <h1 className={`text-4xl sm:text-5xl lg:text-6xl font-bold mb-4 leading-tight ${
+                isDarkMode ? 'text-white' : 'text-gray-900'
+              }`}>
                 Transforme sua educação com
                 <br />
                 IA educacional, bem-vindo ao
                 <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-600 glow-text">
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-500 to-blue-400 glow-text animate-gradient-text">
                   edc+
                 </span>
               </h1>
@@ -159,10 +241,19 @@ export default function LandingPage() {
               </button>
               <button
                 onClick={handleGetStarted}
-                className="w-full sm:w-auto px-8 py-4 glass text-white font-semibold rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 hover:shadow-lg hover:shadow-purple-500/25 transform hover:scale-105 border border-white/20"
+                disabled={isNavigating}
+                className={`w-full sm:w-auto px-8 py-4 font-semibold rounded-xl transition-all duration-200 flex items-center justify-center space-x-2 hover:shadow-lg transform hover:scale-105 backdrop-blur-sm disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none ${
+                  isDarkMode
+                    ? 'glass text-white border border-white/20 hover:shadow-purple-500/25'
+                    : 'bg-white/80 text-blue-600 border border-blue-200 hover:bg-white hover:shadow-blue-500/25'
+                }`}
               >
-                <Play className="w-5 h-5" />
-                <span>Começar agora</span>
+                {isNavigating ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Play className="w-5 h-5" />
+                )}
+                <span>{isNavigating ? 'Carregando...' : 'Começar agora'}</span>
               </button>
             </div>
 
@@ -170,40 +261,76 @@ export default function LandingPage() {
             <div className="relative max-w-6xl mx-auto">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Dashboard Card 1 */}
-                <div className="glass rounded-xl p-4 transform hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/20">
-                  <div className="aspect-video bg-gradient-to-br from-blue-900/50 to-purple-900/50 rounded-lg flex items-center justify-center">
+                <div className={`rounded-xl p-4 transform hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/20 backdrop-blur-sm ${
+                  isDarkMode
+                    ? 'glass border border-white/10'
+                    : 'bg-white/80 border border-gray-200/50'
+                }`}>
+                  <div className={`aspect-video rounded-lg flex items-center justify-center ${
+                    isDarkMode
+                      ? 'bg-gradient-to-br from-blue-900/50 to-purple-900/50'
+                      : 'bg-gradient-to-br from-blue-100/80 to-purple-100/80'
+                  }`}>
                     <div className="text-center">
                       <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <Brain className="w-8 h-8" />
+                        <Brain className="w-8 h-8 text-white" />
                       </div>
-                      <h3 className="text-sm font-semibold mb-1">Chatbot AI</h3>
-                      <p className="text-xs text-gray-400">Assistente inteligente</p>
+                      <h3 className={`text-sm font-semibold mb-1 ${
+                        isDarkMode ? 'text-white' : 'text-gray-900'
+                      }`}>Chatbot AI</h3>
+                      <p className={`text-xs ${
+                        isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                      }`}>Assistente inteligente</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Dashboard Card 2 */}
-                <div className="glass rounded-xl p-4 transform hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/20">
-                  <div className="aspect-video bg-gradient-to-br from-purple-900/50 to-pink-900/50 rounded-lg flex items-center justify-center">
+                <div className={`rounded-xl p-4 transform hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/20 backdrop-blur-sm ${
+                  isDarkMode
+                    ? 'glass border border-white/10'
+                    : 'bg-white/80 border border-gray-200/50'
+                }`}>
+                  <div className={`aspect-video rounded-lg flex items-center justify-center ${
+                    isDarkMode
+                      ? 'bg-gradient-to-br from-purple-900/50 to-pink-900/50'
+                      : 'bg-gradient-to-br from-purple-100/80 to-pink-100/80'
+                  }`}>
                     <div className="text-center">
                       <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <BarChart3 className="w-8 h-8" />
+                        <BarChart3 className="w-8 h-8 text-white" />
                       </div>
-                      <h3 className="text-sm font-semibold mb-1">Análise de Dados</h3>
-                      <p className="text-xs text-gray-400">Insights em tempo real</p>
+                      <h3 className={`text-sm font-semibold mb-1 ${
+                        isDarkMode ? 'text-white' : 'text-gray-900'
+                      }`}>Análise de Dados</h3>
+                      <p className={`text-xs ${
+                        isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                      }`}>Insights em tempo real</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Dashboard Card 3 */}
-                <div className="glass rounded-xl p-4 transform hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/20">
-                  <div className="aspect-video bg-gradient-to-br from-indigo-900/50 to-blue-900/50 rounded-lg flex items-center justify-center">
+                <div className={`rounded-xl p-4 transform hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/20 backdrop-blur-sm ${
+                  isDarkMode
+                    ? 'glass border border-white/10'
+                    : 'bg-white/80 border border-gray-200/50'
+                }`}>
+                  <div className={`aspect-video rounded-lg flex items-center justify-center ${
+                    isDarkMode
+                      ? 'bg-gradient-to-br from-indigo-900/50 to-blue-900/50'
+                      : 'bg-gradient-to-br from-indigo-100/80 to-blue-100/80'
+                  }`}>
                     <div className="text-center">
                       <div className="w-16 h-16 bg-gradient-to-r from-indigo-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <FileText className="w-8 h-8" />
+                        <FileText className="w-8 h-8 text-white" />
                       </div>
-                      <h3 className="text-sm font-semibold mb-1">Conteúdo Estruturado</h3>
-                      <p className="text-xs text-gray-400">Cursos completos</p>
+                      <h3 className={`text-sm font-semibold mb-1 ${
+                        isDarkMode ? 'text-white' : 'text-gray-900'
+                      }`}>Conteúdo Estruturado</h3>
+                      <p className={`text-xs ${
+                        isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                      }`}>Cursos completos</p>
                     </div>
                   </div>
                 </div>
@@ -214,7 +341,15 @@ export default function LandingPage() {
       </section>
 
       {/* Section: A forma mais inteligente de criar seus cursos */}
-      <section className="relative py-20 border-t border-white/5">
+      <section className="relative py-20 overflow-hidden">
+        {/* Linha divisória decorativa com gradiente azul iluminado */}
+        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-3/4 h-px">
+          <div className={`h-full ${
+            isDarkMode
+              ? 'bg-gradient-to-r from-transparent via-blue-500/60 to-transparent shadow-[0_0_10px_rgba(59,130,246,0.5)]'
+              : 'bg-gradient-to-r from-transparent via-blue-400/50 to-transparent shadow-[0_0_8px_rgba(96,165,250,0.4)]'
+          }`} />
+        </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl sm:text-5xl font-bold mb-4">
@@ -261,18 +396,19 @@ export default function LandingPage() {
               </p>
             </div>
           </div>
-
-          {/* Central Text */}
-          <div className="text-center mt-12">
-            <p className="text-gray-400">
-              <span className="text-white font-semibold">Prof. Ana Silva</span>, Especialista em Educação Digital
-            </p>
-          </div>
         </div>
       </section>
 
       {/* Section: Recursos avançados de IA */}
-      <section id="recursos" className="relative py-20 border-t border-white/5">
+      <section id="recursos" className="relative py-20 overflow-hidden">
+        {/* Linha divisória decorativa com gradiente azul iluminado */}
+        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-3/4 h-px">
+          <div className={`h-full ${
+            isDarkMode
+              ? 'bg-gradient-to-r from-transparent via-blue-500/60 to-transparent shadow-[0_0_10px_rgba(59,130,246,0.5)]'
+              : 'bg-gradient-to-r from-transparent via-blue-400/50 to-transparent shadow-[0_0_8px_rgba(96,165,250,0.4)]'
+          }`} />
+        </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl sm:text-5xl font-bold mb-4">
@@ -332,25 +468,33 @@ export default function LandingPage() {
           <div className="text-center mt-16">
             <button
               onClick={handleGetStarted}
-              className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 inline-flex items-center space-x-2 shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/40 transform hover:scale-105"
+              disabled={isNavigating}
+              className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 inline-flex items-center space-x-2 shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/40 transform hover:scale-105 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
             >
-              <span>Começar agora</span>
-              <ArrowRight className="w-5 h-5" />
+              <span>{isNavigating ? 'Carregando...' : 'Começar agora'}</span>
+              {isNavigating ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <ArrowRight className="w-5 h-5" />
+              )}
             </button>
-          </div>
-
-          {/* Validation Badge */}
-          <div className="text-center mt-8">
-            <div className="inline-flex items-center space-x-2 text-sm text-gray-400">
-              <CheckCircle className="w-4 h-4 text-green-400" />
-              <span>Estrutura curricular cientificamente validada</span>
-            </div>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="relative border-t border-white/5 bg-black/50 backdrop-blur-sm">
+      <footer className="relative overflow-hidden">
+        {/* Linha divisória decorativa com gradiente azul iluminado */}
+        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-3/4 h-px">
+          <div className={`h-full ${
+            isDarkMode
+              ? 'bg-gradient-to-r from-transparent via-blue-500/60 to-transparent shadow-[0_0_10px_rgba(59,130,246,0.5)]'
+              : 'bg-gradient-to-r from-transparent via-blue-400/50 to-transparent shadow-[0_0_8px_rgba(96,165,250,0.4)]'
+          }`} />
+        </div>
+        <div className={`backdrop-blur-sm ${
+          isDarkMode ? 'bg-black/20' : 'bg-gray-50/50'
+        }`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-2">
@@ -360,11 +504,11 @@ export default function LandingPage() {
                 </div>
                 <div>
                   <h3 className="text-xl font-bold">EDC+ Plataforma Educacional</h3>
-                  <p className="text-gray-400 text-sm">Ensino superior personalizado com IA científica</p>
+                  <p className="text-gray-400 text-sm">Aqui, sua jornada de conhecimento começa com clareza.</p>
                 </div>
               </div>
               <p className="text-gray-400 mb-4 text-sm">
-                Transformamos a educação através da inteligência artificial, criando experiências de aprendizado personalizadas e cientificamente validadas.
+                Transformamos a educação através da inteligência artificial, criando experiências de aprendizado personalizadas.
               </p>
             </div>
 
@@ -389,16 +533,13 @@ export default function LandingPage() {
 
           <div className="border-t border-white/5 mt-8 pt-8 flex flex-col sm:flex-row justify-between items-center">
             <p className="text-gray-400 text-sm">
-              © 2024 EDC+ Plataforma Educacional. Todos os direitos reservados.
+              © 2025 EDC+ Plataforma Educacional. Todos os direitos reservados.
             </p>
-            <div className="flex items-center space-x-4 mt-4 sm:mt-0 text-sm">
-              <Link href="#" className="text-gray-400 hover:text-white transition-colors">
-                Prof. Ana Silva, Especialista em Educação Digital
-              </Link>
-            </div>
           </div>
         </div>
+        </div>
       </footer>
+      </div>
         </div>
       )}
     </div>

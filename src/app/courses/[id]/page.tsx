@@ -55,6 +55,11 @@ interface Subtopic {
   theory?: string; // Aula-texto
   videos?: string[]; // URLs dos vídeos
   exercises?: any[]; // Exercícios
+  moduleIndex?: number;
+  topicIndex?: number;
+  subtopicIndex?: number;
+  lessonId?: string; // ID da aula no banco
+  hasLesson?: boolean; // Indica se já tem aula gerada
 }
 
 export default function CoursePage() {
@@ -70,6 +75,8 @@ export default function CoursePage() {
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
   const [generatingLesson, setGeneratingLesson] = useState<string | null>(null);
   const [lessonCache, setLessonCache] = useState<Map<string, any>>(new Map());
+  const [autoGenerating, setAutoGenerating] = useState(false);
+  const [courseStructureId, setCourseStructureId] = useState<string | null>(null);
 
   // Carregar dados reais do curso
   useEffect(() => {
@@ -101,6 +108,11 @@ export default function CoursePage() {
           // Converter dados do syllabus para estrutura da página
           const convertedCourse = convertSyllabusToPageStructure(courseData);
 
+          // Extrair ID da estrutura do curso para buscar aulas
+          const structureId = courseData.courseStructureId || courseData.structure_id || null;
+          setCourseStructureId(structureId);
+          console.log('🎯 Course Structure ID encontrado:', structureId);
+
           // Debug: verificar estrutura dos subtópicos
           console.log('📊 Estrutura do curso convertida:', {
             title: convertedCourse.title,
@@ -124,6 +136,16 @@ export default function CoursePage() {
 
           setCourse(convertedCourse);
 
+          // Carregar aulas do banco de dados automaticamente se houver estrutura
+          if (structureId) {
+            console.log('🚀 Carregando aulas automaticamente...');
+            console.log('📊 Course Structure ID:', structureId);
+            await loadLessonsFromDatabaseAutomatically(structureId, convertedCourse);
+          } else {
+            console.log('⚠️ Nenhum courseStructureId encontrado - sem carregamento automático');
+            console.log('🔍 Keys disponíveis no courseData:', Object.keys(courseData));
+          }
+
           // Selecionar primeiro subtópico e expandir primeiro módulo
           if (convertedCourse.modules[0]) {
             setExpandedModules(new Set([convertedCourse.modules[0].id]));
@@ -138,9 +160,35 @@ export default function CoursePage() {
           return;
         }
 
-        // Nenhum curso encontrado no localStorage
+        // Nenhum curso encontrado no localStorage - tentar carregar do banco
         console.log('❌ Nenhum curso encontrado no localStorage para ID:', courseId);
-        console.log('🔍 Verifique se o curso foi salvo corretamente no localStorage');
+        console.log('🔍 Tentando fallback: buscar curso no banco de dados...');
+
+        // Fallback: tentar encontrar curso no banco de dados
+        try {
+          const fallbackCourse = await loadCourseFromDatabase(courseId);
+          if (fallbackCourse) {
+            console.log('✅ Curso recuperado do banco de dados:', fallbackCourse.title);
+            setCourse(fallbackCourse);
+
+            // Selecionar primeiro subtópico e expandir primeiro módulo
+            if (fallbackCourse.modules[0]) {
+              setExpandedModules(new Set([fallbackCourse.modules[0].id]));
+              if (fallbackCourse.modules[0].topics[0]) {
+                setExpandedTopics(new Set([fallbackCourse.modules[0].topics[0].id]));
+                if (fallbackCourse.modules[0].topics[0].subtopics[0]) {
+                  setSelectedSubtopic(fallbackCourse.modules[0].topics[0].subtopics[0]);
+                }
+              }
+            }
+            setLoading(false);
+            return;
+          }
+        } catch (dbError) {
+          console.error('❌ Erro ao carregar do banco:', dbError);
+        }
+
+        console.log('❌ Curso não encontrado nem no localStorage nem no banco de dados');
       } catch (error) {
         console.error('Erro ao carregar curso:', error);
       } finally {
@@ -150,6 +198,74 @@ export default function CoursePage() {
 
     loadCourse();
   }, [courseId]);
+
+  // Recarregar aulas periodicamente caso estejam sendo geradas em background
+  // REMOVIDO: Não fazer polling automático de aulas
+  // As aulas do primeiro tópico já foram geradas antes do redirecionamento
+  // Outros tópicos serão gerados sob demanda quando o usuário clicar
+
+  // Função para carregar aulas do banco de dados automaticamente
+  const loadLessonsFromDatabaseAutomatically = async (structureId: string, courseData: Course) => {
+    try {
+      console.log('🔍 Carregando aulas do banco de dados...', structureId);
+      const url = `/api/save-subtopic-lesson?courseStructureId=${structureId}`;
+      console.log('📡 URL da requisição:', url);
+
+      const response = await fetch(url);
+      const result = await response.json();
+
+      console.log('📊 Resposta da API:', result);
+
+      if (result.success && result.lessons && result.lessons.length > 0) {
+        console.log(`✅ ${result.lessons.length} aulas encontradas no banco`);
+
+        // Criar mapa de aulas por posição
+        const lessonsMap = new Map();
+        result.lessons.forEach((lesson: any) => {
+          const key = `${lesson.module_index}_${lesson.topic_index}_${lesson.subtopic_index}`;
+          lessonsMap.set(key, lesson.lesson_content);
+        });
+
+        // Atualizar curso com aulas carregadas
+        setCourse(prevCourse => {
+          if (!prevCourse) return prevCourse;
+
+          const updatedCourse = { ...prevCourse };
+          let lessonsLoaded = 0;
+
+          updatedCourse.modules.forEach((module, moduleIndex) => {
+            module.topics.forEach((topic, topicIndex) => {
+              topic.subtopics.forEach((subtopic, subtopicIndex) => {
+                const key = `${moduleIndex}_${topicIndex}_${subtopicIndex}`;
+                if (lessonsMap.has(key)) {
+                  subtopic.theory = lessonsMap.get(key);
+                  subtopic.hasLesson = true;
+                  lessonsLoaded++;
+                }
+              });
+            });
+          });
+
+          console.log(`✅ ${lessonsLoaded} aulas carregadas do banco de dados`);
+          return updatedCourse;
+        });
+
+        // Agora que carregamos aulas existentes, não vamos gerar automaticamente
+        // As aulas já devem ter sido geradas durante o loading inicial
+        console.log('📚 Aulas carregadas - exibindo diretamente');
+      } else {
+        console.log('📝 Nenhuma aula encontrada no banco - podem estar sendo geradas');
+        // Não iniciar geração aqui, pois deve ter sido feita durante o loading
+      }
+    } catch (error) {
+      console.error('❌ Erro ao carregar aulas do banco:', error);
+      // Continuar sem aulas do banco - elas podem ainda estar sendo geradas
+    }
+  };
+
+  // REMOVIDO: Função de reload periódico não é mais necessária
+  // As aulas são carregadas uma vez quando a página abre
+  // Novas aulas são geradas sob demanda pelo usuário
 
   const toggleModule = (moduleId: string) => {
     setExpandedModules(prev => {
@@ -175,10 +291,203 @@ export default function CoursePage() {
     });
   };
 
-  const selectSubtopic = (subtopic: Subtopic) => {
+  const selectSubtopic = async (subtopic: Subtopic) => {
     setSelectedSubtopic(subtopic);
     setActiveTab('theory'); // Sempre abrir na aba teoria
+
+    // REMOVIDO: Não buscar do banco a cada mudança de subtópico
+    // As aulas já foram carregadas quando a página abriu
+    // Novas aulas serão geradas sob demanda com o botão "Gerar Aula-Texto"
   };
+
+  // Função para carregar curso do banco de dados como fallback
+  const loadCourseFromDatabase = async (courseId: string): Promise<Course | null> => {
+    try {
+      console.log('🔍 Buscando curso no banco de dados com ID:', courseId);
+
+      // Extrair timestamp do courseId para buscar estruturas próximas
+      const timestampMatch = courseId.match(/course_(\d+)_/);
+      if (!timestampMatch) {
+        console.log('❌ Formato de courseId inválido:', courseId);
+        return null;
+      }
+
+      const timestamp = parseInt(timestampMatch[1]);
+      const targetDate = new Date(timestamp);
+      const searchRangeMs = 300000; // 5 minutos
+      const startTime = new Date(timestamp - searchRangeMs);
+      const endTime = new Date(timestamp + searchRangeMs);
+
+      console.log('📅 Buscando estruturas criadas entre:', {
+        start: startTime.toISOString(),
+        target: targetDate.toISOString(),
+        end: endTime.toISOString()
+      });
+
+      // Buscar estruturas de curso no banco via API endpoint dedicado
+      const response = await fetch(`/api/course-structures?startTime=${startTime.toISOString()}&endTime=${endTime.toISOString()}`);
+
+      if (!response.ok) {
+        // Fallback: tentar buscar a mais recente se endpoint não existir
+        console.log('⚠️ Endpoint específico não encontrado, tentando fallback...');
+        return await loadCourseFromLessonsOnly(courseId);
+      }
+
+      const result = await response.json();
+
+      if (!result.success || !result.structures?.length) {
+        console.log('📝 Nenhuma estrutura encontrada no período, tentando fallback...');
+        return await loadCourseFromLessonsOnly(courseId);
+      }
+
+      // Pegar a estrutura mais próxima do timestamp
+      const closestStructure = result.structures
+        .map((struct: any) => ({
+          ...struct,
+          timeDiff: Math.abs(new Date(struct.created_at).getTime() - timestamp)
+        }))
+        .sort((a: any, b: any) => a.timeDiff - b.timeDiff)[0];
+
+      console.log('✅ Estrutura encontrada:', {
+        id: closestStructure.id,
+        title: closestStructure.title,
+        timeDiff: closestStructure.timeDiff + 'ms'
+      });
+
+      // Converter estrutura para formato do curso
+      const courseData = {
+        id: courseId,
+        title: closestStructure.title || 'Curso Recuperado',
+        description: closestStructure.description || 'Curso recuperado do banco de dados',
+        syllabus_data: closestStructure.structure_data,
+        courseStructureId: closestStructure.id
+      };
+
+      const convertedCourse = convertSyllabusToPageStructure(courseData);
+      setCourseStructureId(closestStructure.id);
+
+      // Carregar aulas existentes
+      await loadLessonsFromDatabaseAutomatically(closestStructure.id, convertedCourse);
+
+      return convertedCourse;
+
+    } catch (error) {
+      console.error('❌ Erro ao buscar curso no banco:', error);
+      return await loadCourseFromLessonsOnly(courseId);
+    }
+  };
+
+  // Fallback: criar curso básico apenas com aulas existentes
+  const loadCourseFromLessonsOnly = async (courseId: string): Promise<Course | null> => {
+    try {
+      console.log('🔄 Tentando reconstruir curso apenas com aulas...');
+
+      // Buscar todas as aulas recentes
+      const response = await fetch('/api/save-subtopic-lesson');
+      const result = await response.json();
+
+      if (!result.success || !result.lessons?.length) {
+        console.log('❌ Nenhuma aula encontrada para reconstrução');
+        return null;
+      }
+
+      // Agrupar aulas por estrutura
+      const lessonsByStructure = result.lessons.reduce((acc: any, lesson: any) => {
+        const structId = lesson.course_structure_id;
+        if (!acc[structId]) acc[structId] = [];
+        acc[structId].push(lesson);
+        return acc;
+      }, {});
+
+      // Pegar a estrutura com mais aulas (provavelmente a mais recente)
+      const [bestStructureId, bestLessons] = Object.entries(lessonsByStructure)
+        .sort(([,a]: any, [,b]: any) => b.length - a.length)[0] || [null, []];
+
+      if (!bestStructureId || !Array.isArray(bestLessons) || bestLessons.length === 0) {
+        console.log('❌ Nenhuma estrutura válida encontrada');
+        return null;
+      }
+
+      console.log(`✅ Reconstruindo curso com ${bestLessons.length} aulas da estrutura ${bestStructureId}`);
+
+      // Criar estrutura básica do curso
+      const basicCourse: Course = {
+        id: courseId,
+        title: 'Curso Recuperado',
+        description: 'Curso recuperado automaticamente do banco de dados',
+        modules: []
+      };
+
+      // Reconstruir módulos/tópicos/subtópicos baseado nas aulas
+      const moduleMap = new Map();
+
+      bestLessons.forEach((lesson: any) => {
+        const modKey = lesson.module_index;
+        const topKey = `${lesson.module_index}_${lesson.topic_index}`;
+
+        if (!moduleMap.has(modKey)) {
+          moduleMap.set(modKey, {
+            id: `mod_${modKey}`,
+            title: lesson.lesson_metadata?.moduleTitle || `Módulo ${modKey + 1}`,
+            description: '',
+            order: modKey + 1,
+            topics: new Map()
+          });
+        }
+
+        if (!moduleMap.get(modKey).topics.has(topKey)) {
+          moduleMap.get(modKey).topics.set(topKey, {
+            id: `topic_${lesson.topic_index}`,
+            title: lesson.lesson_metadata?.topicTitle || `Tópico ${lesson.topic_index + 1}`,
+            description: '',
+            order: lesson.topic_index + 1,
+            subtopics: []
+          });
+        }
+
+        moduleMap.get(modKey).topics.get(topKey).subtopics.push({
+          id: `sub_${lesson.module_index}_${lesson.topic_index}_${lesson.subtopic_index}`,
+          title: lesson.subtopic_title,
+          description: '',
+          order: lesson.subtopic_index + 1,
+          estimatedDuration: lesson.estimated_reading_time || '5 min',
+          completed: false,
+          theory: lesson.lesson_content,
+          videos: [],
+          exercises: [],
+          moduleIndex: lesson.module_index,
+          topicIndex: lesson.topic_index,
+          subtopicIndex: lesson.subtopic_index,
+          hasLesson: true
+        });
+      });
+
+      // Converter Maps para arrays
+      basicCourse.modules = Array.from(moduleMap.values()).map(module => ({
+        ...module,
+        topics: Array.from(module.topics.values()).map((topic: any) => ({
+          ...topic,
+          subtopics: topic.subtopics.sort((a: any, b: any) => a.order - b.order)
+        }))
+          .sort((a: any, b: any) => a.order - b.order)
+      }))
+        .sort((a, b) => a.order - b.order);
+
+      setCourseStructureId(bestStructureId);
+      console.log('✅ Curso reconstruído com sucesso:', basicCourse.title);
+
+      return basicCourse;
+
+    } catch (error) {
+      console.error('❌ Erro ao reconstruir curso das aulas:', error);
+      return null;
+    }
+  };
+
+  // Função para carregar aula específica do banco
+  // REMOVIDO: Função de carregar aula individual do banco não é mais necessária
+  // As aulas são carregadas uma vez quando a página abre
+  // Não precisamos buscar novamente a cada mudança de subtópico
 
   const generateLesson = async (subtopic: Subtopic, topic: Topic) => {
     const lessonKey = subtopic.id;
@@ -196,15 +505,31 @@ export default function CoursePage() {
     setGeneratingLesson(lessonKey);
 
     try {
-      const response = await fetch('/api/generate-lesson', {
+      // Encontrar o módulo atual
+      const currentModule = course?.modules.find(m =>
+        m.topics.some(t => t.subtopics.some(s => s.id === subtopic.id))
+      );
+
+      // Extrair subject do título do curso (simplificado)
+      const subject = course?.title?.toLowerCase()
+        .replace('curso completo de ', '')
+        .replace('curso de ', '') || '';
+
+      const response = await fetch('/api/generate-single-lesson', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          topic: topic.title,
-          subtopic: subtopic.title,
-          level: 'intermediate'
+          courseStructureId: courseStructureId || null,
+          moduleIndex: subtopic.moduleIndex,
+          topicIndex: subtopic.topicIndex,
+          subtopicIndex: subtopic.subtopicIndex,
+          moduleTitle: currentModule?.title || '',
+          topicTitle: topic.title,
+          subtopicTitle: subtopic.title,
+          subject: subject,
+          educationLevel: 'undergraduate'
         })
       });
 
@@ -403,6 +728,19 @@ export default function CoursePage() {
           </button>
           <h1 className="text-lg font-bold text-gray-900 leading-tight">{course.title}</h1>
           <p className="text-sm text-gray-600 mt-1">{course.description}</p>
+
+          {/* Banner de geração automática */}
+          {autoGenerating && (
+            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                <span className="text-sm text-blue-800 font-medium">Gerando aulas automaticamente...</span>
+              </div>
+              <p className="text-xs text-blue-600 mt-1">
+                As aulas aparecerão conforme são geradas
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Lista de módulos */}
@@ -469,11 +807,16 @@ export default function CoursePage() {
                                 <div className="w-4 h-4 flex items-center justify-center">
                                   {subtopic.completed ? (
                                     <CheckCircle className="w-3 h-3 text-green-500" />
+                                  ) : subtopic.hasLesson || subtopic.theory ? (
+                                    <BookOpen className="w-3 h-3 text-blue-500" />
                                   ) : (
                                     <Circle className="w-3 h-3 text-gray-400" />
                                   )}
                                 </div>
                                 <span className="text-xs">{subtopic.title}</span>
+                                {(subtopic.hasLesson || subtopic.theory) && (
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                )}
                               </div>
                               <div className="flex items-center space-x-1 text-xs text-gray-500">
                                 <Clock className="w-3 h-3" />
@@ -598,7 +941,9 @@ export default function CoursePage() {
                         ) : (
                           <>
                             <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                            <h3 className="text-xl font-bold text-gray-900 mb-2">Aula-Texto não gerada</h3>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">
+                              Aula-Texto não disponível
+                            </h3>
                             <p className="text-gray-600 mb-6 max-w-md mx-auto">
                               Clique no botão abaixo para gerar o conteúdo teórico desta aula com inteligência artificial.
                             </p>
@@ -682,7 +1027,7 @@ function convertSyllabusToPageStructure(courseData: any): Course {
           // Verificar se é string e converter para objeto
           if (typeof subtopic === 'string') {
             return {
-              id: `sub_${topicIndex}_${subtopicIndex}`,
+              id: `sub_${moduleIndex}_${topicIndex}_${subtopicIndex}`,
               title: subtopic,
               description: '',
               order: subtopicIndex + 1,
@@ -690,12 +1035,16 @@ function convertSyllabusToPageStructure(courseData: any): Course {
               completed: false,
               theory: null,
               videos: [],
-              exercises: []
+              exercises: [],
+              moduleIndex,
+              topicIndex,
+              subtopicIndex,
+              hasLesson: false
             };
           }
           // Se já é objeto, garantir todas as propriedades
           const result = {
-            id: subtopic.id || `sub_${topicIndex}_${subtopicIndex}`,
+            id: subtopic.id || `sub_${moduleIndex}_${topicIndex}_${subtopicIndex}`,
             title: subtopic.title || subtopic.name || subtopic.titulo || 'Subtópico sem título',
             description: subtopic.description || subtopic.descricao || '',
             order: subtopic.order || subtopic.ordem || subtopicIndex + 1,
@@ -703,7 +1052,11 @@ function convertSyllabusToPageStructure(courseData: any): Course {
             completed: false,
             theory: subtopic.theory || subtopic.teoria || null,
             videos: subtopic.videos || [],
-            exercises: subtopic.exercises || subtopic.exercicios || []
+            exercises: subtopic.exercises || subtopic.exercicios || [],
+            moduleIndex,
+            topicIndex,
+            subtopicIndex,
+            hasLesson: !!(subtopic.theory || subtopic.teoria)
           };
 
           // Debug: logar se o subtópico tem teoria

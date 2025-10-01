@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { saveCourseStructure, findExistingStructure } from '@/lib/supabase';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -29,28 +30,59 @@ export async function POST(request: NextRequest) {
     // 1. Gerar ID único simples para o curso
     const courseId = `course_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // 2. Iniciar geração de aulas do primeiro módulo em paralelo
-    let lessonGenerationPromise = null;
+    // 2. Salvar estrutura do curso no banco de dados
+    console.log('💾 Salvando estrutura do curso no banco...');
+
+    // Extrair assunto e nível da estrutura
+    const subject = syllabus.title.toLowerCase().replace('curso completo de ', '').replace('curso de ', '');
+    const educationLevel = 'undergraduate'; // Nível padrão (pode vir do questionário futuramente)
+
+    const courseStructureResult = await saveCourseStructure(
+      syllabus.title,
+      educationLevel,
+      syllabus
+    );
+
+    console.log('✅ Estrutura salva:', courseStructureResult);
+
+    // 3. Iniciar e AGUARDAR geração de aulas iniciais
+    let lessonGenerationResult = null;
 
     // Usar sessionId enviado ou criar um padrão
     const effectiveSessionId = sessionId || `fallback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // FORÇAR geração de aulas sempre se houver módulos
-    if (syllabus.modules && syllabus.modules.length > 0) {
-      console.log('🎓 SEMPRE iniciando geração de aulas do primeiro módulo...');
+    // AGUARDAR geração de aulas iniciais se houver módulos
+    if (syllabus.modules && syllabus.modules.length > 0 && courseStructureResult.id) {
+      console.log('🎓 Iniciando e aguardando geração de aulas iniciais...');
       console.log('📊 SessionId usado:', effectiveSessionId);
-      console.log('📚 Primeiro módulo:', syllabus.modules[0]?.title);
+      console.log('📚 Course Structure ID:', courseStructureResult.id);
 
-      // Importar e executar diretamente a função de geração
-      lessonGenerationPromise = startLessonGeneration(syllabus, effectiveSessionId).catch(error => {
-        console.error('Erro ao iniciar geração de aulas:', error);
-        return null;
-      });
+      try {
+        // AGUARDAR a conclusão da geração de aulas antes de retornar
+        lessonGenerationResult = await startInitialLessonGeneration(
+          courseStructureResult.id,
+          syllabus,
+          effectiveSessionId,
+          subject,
+          educationLevel
+        );
+
+        console.log('✅ Geração de aulas concluída:', {
+          lessonsGenerated: lessonGenerationResult?.lessonsGenerated || 0,
+          lessonsExisting: lessonGenerationResult?.lessonsExisting || 0,
+          totalSubtopics: lessonGenerationResult?.totalSubtopics || 0
+        });
+      } catch (error) {
+        console.error('❌ Erro ao gerar aulas:', error);
+        // Continuar mesmo se houver erro na geração
+        lessonGenerationResult = null;
+      }
     } else {
-      console.log('⚠️ Nenhum módulo encontrado para gerar aulas');
+      console.log('⚠️ Nenhum módulo encontrado ou erro ao salvar estrutura');
     }
 
     console.log('✅ Curso criado com ID:', courseId);
+    console.log('📊 Structure ID:', courseStructureResult.id);
 
     // 3. Calcular estatísticas do curso
     let totalTopics = 0;
@@ -69,6 +101,20 @@ export async function POST(request: NextRequest) {
       total_topics: totalTopics
     });
 
+    // Verificar se TODAS as aulas necessárias estão prontas
+    const totalNeeded = syllabus.modules?.[0]?.topics?.[0]?.subtopics?.length || 0;
+    const totalReady = lessonGenerationResult
+      ? (lessonGenerationResult.lessonsExisting || 0) + (lessonGenerationResult.lessonsGenerated || 0)
+      : 0;
+
+    const allLessonsReady = totalNeeded > 0 && totalNeeded === totalReady;
+
+    console.log('📊 Status das aulas:', {
+      totalNeeded,
+      totalReady,
+      allLessonsReady
+    });
+
     return NextResponse.json({
       success: true,
       courseId: courseId,
@@ -78,11 +124,20 @@ export async function POST(request: NextRequest) {
         description: syllabus.description || `Curso de ${syllabus.title}`,
         total_topics: totalTopics,
         progress: 0,
-        syllabus_data: syllabus
+        syllabus_data: syllabus,
+        courseStructureId: courseStructureResult.id
       },
       message: `Curso "${syllabus.title}" criado com ${totalTopics} tópicos`,
-      sessionId: sessionId || effectiveSessionId, // Sempre retornar um sessionId
-      generatingLessons: lessonGenerationPromise !== null
+      sessionId: effectiveSessionId,
+      lessonsReady: allLessonsReady, // Só true quando TODAS as aulas estiverem prontas
+      lessonStats: lessonGenerationResult ? {
+        lessonsGenerated: lessonGenerationResult.lessonsGenerated || 0,
+        lessonsExisting: lessonGenerationResult.lessonsExisting || 0,
+        totalSubtopics: lessonGenerationResult.totalSubtopics || 0,
+        needed: totalNeeded,
+        ready: totalReady,
+        missing: Math.max(0, totalNeeded - totalReady)
+      } : null
     });
 
   } catch (error) {
@@ -98,66 +153,169 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Função para iniciar geração de aulas sem fetch
-async function startLessonGeneration(syllabus: any, sessionId: string) {
+// Função para iniciar geração de aulas iniciais (primeiros subtópicos)
+async function startInitialLessonGeneration(
+  courseStructureId: string,
+  syllabus: any,
+  sessionId: string,
+  subject: string,
+  educationLevel: string
+) {
   try {
-    // Extrair primeiro módulo e seus subtópicos
-    const firstModule = syllabus.modules?.[0];
-    if (!firstModule) {
-      throw new Error('No modules found in syllabus');
-    }
+    console.log('🎯 Coletando primeiros subtópicos para geração inicial...');
+    console.log('📚 Assunto:', subject, '| Nível:', educationLevel);
 
-    // Coletar todos os subtópicos do primeiro módulo
-    const subtopics: any[] = [];
-    firstModule.topics?.forEach((topic: any) => {
-      if (topic.subtopics && Array.isArray(topic.subtopics)) {
-        topic.subtopics.forEach((subtopic: any) => {
-          subtopics.push({
-            topicTitle: topic.title,
-            subtopic: typeof subtopic === 'string' ? subtopic : subtopic.title || subtopic.name,
-            id: subtopic.id || `sub_${topic.id}_${subtopics.length}`
+    // Coletar APENAS subtópicos do PRIMEIRO tópico do PRIMEIRO módulo
+    const subtopicsToGenerate: any[] = [];
+
+    // Apenas primeiro módulo e primeiro tópico
+    if (syllabus.modules?.length > 0 && syllabus.modules[0].topics?.length > 0) {
+      const firstModule = syllabus.modules[0];
+      const firstTopic = firstModule.topics[0];
+
+      // Pegar TODOS os subtópicos do primeiro tópico (geralmente 3-5)
+      if (firstTopic.subtopics && Array.isArray(firstTopic.subtopics)) {
+        firstTopic.subtopics.forEach((subtopic: any, subtopicIndex: number) => {
+          subtopicsToGenerate.push({
+            moduleIndex: 0,  // Sempre primeiro módulo
+            topicIndex: 0,   // Sempre primeiro tópico
+            subtopicIndex,
+            moduleTitle: firstModule.title,
+            topicTitle: firstTopic.title,
+            subtopicTitle: typeof subtopic === 'string' ? subtopic : subtopic.title || subtopic.name,
+            subtopicDescription: typeof subtopic === 'object' ? subtopic.description : '',
+            id: `sub_0_0_${subtopicIndex}`
           });
         });
       }
-    });
+    }
+
+    console.log(`📚 Total de subtópicos do primeiro tópico: ${subtopicsToGenerate.length}`);
+    console.log('📝 Subtópicos:', subtopicsToGenerate.map(s => s.subtopicTitle));
 
     // Inicializar progresso
     progressCache.set(sessionId, {
-      total: subtopics.length,
+      total: subtopicsToGenerate.length,
       current: 0,
       status: 'generating',
-      message: 'Iniciando geração das aulas...',
-      lessons: {}
+      message: 'Verificando aulas existentes...',
+      phase: 'checking_existing',
+      lessons: {},
+      courseStructureId
     });
 
-    // Gerar aulas em paralelo (mas com limite de concorrência)
-    const BATCH_SIZE = 3; // Processar 3 aulas por vez
-    const generatedLessons: Record<string, string> = {};
+    // Verificar quais aulas já existem no banco
+    console.log('🔍 Verificando aulas existentes no banco...');
+    console.log('📊 Usando search_key com:', { subject, educationLevel });
 
-    for (let i = 0; i < subtopics.length; i += BATCH_SIZE) {
-      const batch = subtopics.slice(i, Math.min(i + BATCH_SIZE, subtopics.length));
+    // Buscar usando subject e educationLevel (mais confiável)
+    const existingLessonsResponse = await fetch(
+      `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/save-subtopic-lesson?` +
+      `subject=${encodeURIComponent(subject)}&educationLevel=${encodeURIComponent(educationLevel)}&` +
+      `courseStructureId=${courseStructureId}`
+    );
+    const existingLessonsResult = await existingLessonsResponse.json();
+
+    const existingLessonsMap = new Map();
+    if (existingLessonsResult.success && existingLessonsResult.lessons) {
+      existingLessonsResult.lessons.forEach((lesson: any) => {
+        const key = `${lesson.module_index}_${lesson.topic_index}_${lesson.subtopic_index}`;
+        existingLessonsMap.set(key, lesson);
+      });
+      console.log(`✅ ${existingLessonsResult.lessons.length} aulas existentes encontradas`);
+    }
+
+    // Filtrar apenas subtópicos que precisam de aulas
+    const subtopicsNeedingLessons = subtopicsToGenerate.filter(subtopic => {
+      const key = `${subtopic.moduleIndex}_${subtopic.topicIndex}_${subtopic.subtopicIndex}`;
+      return !existingLessonsMap.has(key);
+    });
+
+    console.log(`📝 ${subtopicsNeedingLessons.length} aulas novas precisam ser geradas`);
+
+    if (subtopicsNeedingLessons.length === 0) {
+      progressCache.set(sessionId, {
+        total: subtopicsToGenerate.length,
+        current: subtopicsToGenerate.length,
+        status: 'completed',
+        message: 'Todas as aulas já existem!',
+        phase: 'completed',
+        lessons: {},
+        courseStructureId
+      });
+      return {
+        success: true,
+        sessionId,
+        lessonsGenerated: 0,
+        lessonsExisting: subtopicsToGenerate.length,
+        totalSubtopics: subtopicsToGenerate.length
+      };
+    }
+
+    // Gerar aulas em lotes otimizados (4 por vez para melhor performance)
+    const BATCH_SIZE = 4; // Processar 4 aulas por vez otimizando performance
+    const generatedLessons: Record<string, string> = {};
+    let processedCount = subtopicsToGenerate.length - subtopicsNeedingLessons.length; // Contar aulas já existentes
+
+    for (let i = 0; i < subtopicsNeedingLessons.length; i += BATCH_SIZE) {
+      const batch = subtopicsNeedingLessons.slice(i, Math.min(i + BATCH_SIZE, subtopicsNeedingLessons.length));
 
       // Atualizar progresso
       progressCache.set(sessionId, {
-        total: subtopics.length,
-        current: i,
+        total: subtopicsToGenerate.length,
+        current: processedCount,
         status: 'generating',
-        message: `Gerando aula ${i + 1} de ${subtopics.length}...`,
-        lessons: generatedLessons
+        message: `Gerando aula ${processedCount + 1} de ${subtopicsToGenerate.length}...`,
+        phase: 'generating_lessons',
+        currentSubtopic: batch[0]?.subtopicTitle,
+        lessons: generatedLessons,
+        courseStructureId
       });
 
       // Gerar batch em paralelo
       const batchPromises = batch.map(async (item) => {
         try {
+          console.log(`🎓 Gerando aula: ${item.subtopicTitle}`);
           const lessonContent = await generateLesson(
             item.topicTitle,
-            item.subtopic,
-            'intermediate'
+            item.subtopicTitle,
+            'medium'  // Corrigido: usar 'medium' ao invés de 'intermediate'
           );
-          return { id: item.id, content: lessonContent };
+
+          // Salvar no banco imediatamente
+          const saveResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/save-subtopic-lesson`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              courseStructureId,
+              moduleIndex: item.moduleIndex,
+              topicIndex: item.topicIndex,
+              subtopicIndex: item.subtopicIndex,
+              subtopicTitle: item.subtopicTitle,
+              lessonContent,
+              subject,          // Adicionar subject
+              educationLevel,   // Adicionar educationLevel
+              metadata: {
+                model: 'gpt-4o-mini',
+                difficulty: 'medium',  // Corrigido: usar 'medium' ao invés de 'intermediate'
+                generatedAt: new Date().toISOString(),
+                moduleTitle: item.moduleTitle,
+                topicTitle: item.topicTitle
+              }
+            })
+          });
+
+          const saveResult = await saveResponse.json();
+          if (saveResult.success) {
+            console.log(`✅ Aula salva: ${item.subtopicTitle}`);
+          } else {
+            console.error(`❌ Erro ao salvar aula: ${saveResult.error}`);
+          }
+
+          return { id: item.id, content: lessonContent, saved: saveResult.success };
         } catch (error) {
-          console.error(`Error generating lesson for ${item.subtopic}:`, error);
-          return { id: item.id, content: null };
+          console.error(`Error generating lesson for ${item.subtopicTitle}:`, error);
+          return { id: item.id, content: null, saved: false };
         }
       });
 
@@ -169,22 +327,28 @@ async function startLessonGeneration(syllabus: any, sessionId: string) {
           generatedLessons[result.id] = result.content;
         }
       });
+
+      processedCount += batch.length;
     }
 
     // Marcar como completo
     progressCache.set(sessionId, {
-      total: subtopics.length,
-      current: subtopics.length,
+      total: subtopicsToGenerate.length,
+      current: subtopicsToGenerate.length,
       status: 'completed',
-      message: 'Todas as aulas foram geradas!',
-      lessons: generatedLessons
+      message: 'Aulas iniciais geradas com sucesso!',
+      phase: 'completed',
+      lessons: generatedLessons,
+      courseStructureId
     });
 
     return {
       success: true,
       sessionId,
       lessonsGenerated: Object.keys(generatedLessons).length,
-      totalSubtopics: subtopics.length
+      lessonsExisting: subtopicsToGenerate.length - subtopicsNeedingLessons.length,
+      totalSubtopics: subtopicsToGenerate.length,
+      courseStructureId
     };
 
   } catch (error) {
@@ -241,7 +405,7 @@ Adicione uma curiosidade interessante ou uma dica prática relacionada ao tema.
 ---
 
 **Importante:**
-- Use linguagem clara e didática, apropriada para nível ${level}
+- Use linguagem clara e didática, apropriada para nível médio
 - Inclua exatamente 2 marcações [IMAGEM: ...] em pontos estratégicos
 - Faça analogias com situações do dia a dia
 - Mantenha um tom profissional mas acessível
