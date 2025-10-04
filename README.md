@@ -176,7 +176,7 @@ npm run type-check  # Verificação TypeScript
 - Consultorias desenvolvendo material educacional
 - Plataformas de e-learning automatizando produção
 
-## 🔮 Roadmap (V4)
+## 🔮 Roadmap (V2)
 
 ### Geração de Conteúdo Educacional
 - [ ] Aula-texto automática para cada subtópico (GPT-4o)
@@ -220,4 +220,4 @@ Desenvolvido por **Wellington**
 
 **⭐ Se este projeto foi útil, considere dar uma estrela no GitHub!**
 
-**🚀 EDC+ V3 - Transformando ideias em cursos estruturados com IA**
+**🚀 EDC+ V1 - Transformando ideias em cursos estruturados com IA**
